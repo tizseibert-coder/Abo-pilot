@@ -41,8 +41,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       {healthSeason && (
         <p className="notice">
           <strong>Krankenkassen-Check:</strong> Die Kündigung der Grundversicherung muss bis 30.11. beim Versicherer
-          eintreffen. Prämien vergleichen Sie neutral beim Bund auf{' '}
-          <a href="https://www.priminfo.admin.ch" target="_blank" rel="noreferrer">priminfo.admin.ch</a>.
+          eintreffen. <Link href="/krankenkasse">Jetzt Prämien vergleichen</Link> – mit den offiziellen Zahlen des BAG, ohne
+          Provision.
           {!hasHealth && ' Erfassen Sie Ihre Krankenkasse, damit wir die Frist überwachen.'}
         </p>
       )}

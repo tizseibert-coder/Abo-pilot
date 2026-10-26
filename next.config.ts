@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
   poweredByHeader: false,
   serverExternalPackages: ['unpdf'],
+  // BAG-Prämientabellen sind mehrere MB gross (Upload nur für das Team).
+  experimental: { serverActions: { bodySizeLimit: '80mb' } },
   async headers() {
     return [
       {

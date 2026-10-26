@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { SEED_OFFERS } from '@/data/offers.seed';
+import { SEED_SOURCES } from '@/data/sources.seed';
 
 // Eine SQLite-Datei pro Instanz. Für die Beta auf einem Schweizer Server ausreichend;
 // bei Wachstum auf PostgreSQL wechseln (Schema ist bewusst portabel gehalten).
@@ -88,7 +89,61 @@ CREATE TABLE IF NOT EXISTS profiles (
   wants_tv INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS kk_premiums (
+  year INTEGER NOT NULL,
+  insurer_id TEXT NOT NULL,
+  insurer_name TEXT NOT NULL,
+  canton TEXT NOT NULL,
+  region INTEGER NOT NULL,
+  age_class TEXT NOT NULL,
+  accident INTEGER NOT NULL,
+  franchise INTEGER NOT NULL,
+  model TEXT NOT NULL,
+  tariff_name TEXT NOT NULL,
+  premium REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS kk_premiums_lookup ON kk_premiums(year, canton, region);
+CREATE TABLE IF NOT EXISTS kk_regions (
+  plz TEXT NOT NULL,
+  canton TEXT NOT NULL,
+  region INTEGER NOT NULL,
+  place TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS kk_regions_plz ON kk_regions(plz);
+CREATE TABLE IF NOT EXISTS data_imports (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,
+  source TEXT NOT NULL,
+  rows INTEGER NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  imported_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sources (
+  id INTEGER PRIMARY KEY,
+  category TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  url TEXT NOT NULL UNIQUE,
+  method TEXT NOT NULL DEFAULT 'auto',
+  active INTEGER NOT NULL DEFAULT 1,
+  last_run_at TEXT,
+  last_status TEXT,
+  last_message TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
 `;
+
+/** Spalten, die nach dem ersten Release dazukamen (SQLite kennt kein ADD COLUMN IF NOT EXISTS). */
+const ADDED_COLUMNS: [table: string, column: string, ddl: string][] = [
+  ['profiles', 'persons', "persons TEXT NOT NULL DEFAULT '[]'"],
+  ['profiles', 'kk_models', "kk_models TEXT NOT NULL DEFAULT 'alle'"],
+];
+
+function migrate(d: DatabaseSync): void {
+  for (const [table, column, ddl] of ADDED_COLUMNS) {
+    const cols = d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === column)) d.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
+}
 
 let db: DatabaseSync | undefined;
 
@@ -99,7 +154,9 @@ export function getDb(): DatabaseSync {
     db = new DatabaseSync(file);
     db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     db.exec(SCHEMA);
+    migrate(db);
     seedOffers(db);
+    seedSources(db);
   }
   return db;
 }
@@ -116,6 +173,25 @@ function seedOffers(d: DatabaseSync): void {
     insert.run(o.id, o.category, o.provider, o.name, o.monthlyPrice, o.promoPrice, o.promoMonths, o.bonusChf, o.oneTimeFeeChf,
       o.newCustomerLockMonths, o.commissionChf, o.dataGb, o.roamingEu ? 1 : 0, o.speedMbps, o.includesTv ? 1 : 0,
       o.minTermMonths, o.validUntil, o.sourceUrl, o.checkedAt, o.status, o.notes, nowISO());
+  }
+}
+
+function seedSources(d: DatabaseSync): void {
+  const insert = d.prepare('INSERT OR IGNORE INTO sources (category, provider, url, method, active, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+  for (const s of SEED_SOURCES) insert.run(s.category, s.provider, s.url, s.method, 0, nowISO());
+}
+
+/** Mehrere Schreibvorgänge atomar ausführen. */
+export function transaction<T>(fn: () => T): T {
+  const d = getDb();
+  d.exec('BEGIN');
+  try {
+    const result = fn();
+    d.exec('COMMIT');
+    return result;
+  } catch (e) {
+    d.exec('ROLLBACK');
+    throw e;
   }
 }
 

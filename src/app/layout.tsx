@@ -24,9 +24,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <>
                 <Link href="/dashboard">Übersicht</Link>
                 <Link href="/vertraege/neu">Vertrag erfassen</Link>
+                <Link href="/krankenkasse">Krankenkasse</Link>
                 <Link href="/praemien">Prämien</Link>
                 <Link href="/start">Profil</Link>
-                {isAdmin(user) && <Link href="/admin/angebote">Angebote</Link>}
+                {isAdmin(user) && (
+                  <>
+                    <Link href="/admin/angebote">Angebote</Link>
+                    <Link href="/admin/quellen">Quellen</Link>
+                    <Link href="/admin/daten">Daten</Link>
+                  </>
+                )}
                 <Link href="/konto">Konto</Link>
                 <form action={logout} className="inline-form">
                   <button className="link" type="submit">Abmelden</button>

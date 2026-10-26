@@ -12,6 +12,9 @@ Entwicklungsplan & Rechtsrahmen».
 | Profil-Assistent: Haushalt, Nutzung, heutige Kosten – legt Verträge automatisch an | `/start` |
 | Nur passende Angebote zuerst (Datenmenge, EU-Roaming, Internet-Speed, TV) | `src/lib/profile.ts` |
 | Angebotspflege mit Prüfprozess, Quelle, Gültigkeit und CSV-Import (nur Team) | `/admin/angebote` |
+| Krankenkassen-Vergleich für den ganzen Haushalt mit offiziellen BAG-Prämien | `/krankenkasse` |
+| Import BAG-Prämien und Prämienregionen (Upload oder URL, nur Team) | `/admin/daten` |
+| Angebots-Suchlauf über Tarifseiten der Anbieter (JSON-LD, sonst Claude), täglich per Cron | `/admin/quellen`, `/api/cron/angebote` |
 | Vertrag erfassen, auch aus eingefügtem Rechnungstext oder PDF (Anbieter, Preis, Nummer, Beginn) | `/vertraege/neu` |
 | Fristenrechner: Mindestlaufzeit, automatische Verlängerung, Monatsende, Krankenkasse (30.11.) | `src/lib/deadlines.ts` |
 | Ampel und Übersicht, Krankenkassen-Hinweis im Herbst mit Link auf priminfo.admin.ch | `/dashboard` |
@@ -37,6 +40,34 @@ Jede Änderung oder jeder Import setzt ein Angebot auf «Entwurf» zurück.
 - Nur Stufe-1-Kategorien (Handy, Internet, Streaming, Bank) sind importierbar; Versicherungen und Grundversicherung
   werden abgewiesen (Rechtsrahmen).
 - Kein automatisches Scraping von Anbieterseiten (UWG Art. 5 lit. c, Anbieter-AGB). Ziel sind Partner- oder Affiliate-Feeds.
+
+## Wie Angebote automatisch gefunden werden
+
+| Kategorie | Quelle | Automatisierung | Rechtliche Einordnung |
+| --- | --- | --- | --- |
+| Krankenkasse (Grundversicherung) | Offene Daten des BAG: Prämientabelle + Prämienregionen | Jährlich Ende September importieren (`/admin/daten`, Upload oder URL) | Amtliche Daten, frei nutzbar; keine Provision, keine Vermittlung |
+| Handy, Internet, Streaming, Bank | Tarifseiten der Anbieter | Täglicher Suchlauf; strukturierte Daten (JSON-LD) zuerst, sonst Extraktion mit Claude | Nur Anbieterseiten, robots.txt, erkennbarer Bot, Beleg-Zitat; Änderungen gehen durch das Team |
+| alle Stufe-1-Kategorien | Partner- oder Affiliate-Feeds | CSV-Import (`/admin/angebote`) | Vertraglich geregelt – der sauberste Weg |
+| Zusatz- und Sachversicherungen | – | bewusst nicht | erst Stufe 2 mit registriertem Broker |
+
+Suchlauf im Detail (`src/lib/crawler/`):
+
+1. Seite laden (`page.ts`): nur https, robots.txt beachten, User-Agent `AboPilotBot`, max. 3 MB, höchstens einmal in 20 Std.
+2. Angebote lesen (`extract.ts`): zuerst schema.org-JSON-LD (nur Monatspreise in CHF). Fehlt das, liest Claude
+   (`claude-opus-5-5`, strukturierte Ausgabe) den Seitentext. Jedes Ergebnis braucht ein wörtliches Zitat und den Preis
+   auf der Seite, sonst wird es verworfen.
+3. Abgleich (`run.ts`): neu → Entwurf; geändert → zurück auf Entwurf mit «Änderung erkannt: Preis 29.9 → 24.9»;
+   unverändert und geprüft → Prüfdatum automatisch auf heute. Kunden sehen nur geprüfte Angebote.
+
+Server-Cronjob (täglich):
+
+```bash
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/angebote
+```
+
+Die Start-Quellen (`src/data/sources.seed.ts`) sind inaktiv angelegt: URL und Nutzungsbedingungen prüfen, dann aktivieren.
+Die BAG-Spaltennamen werden tolerant erkannt (`src/lib/kk/premiums.ts`). Nach dem ersten echten Import Stichproben
+mit priminfo.admin.ch vergleichen, weil das genaue Dateiformat hier nicht überprüft werden konnte.
 
 ## Starten
 
@@ -84,6 +115,8 @@ tests/            Vitest
 
 ## Nächste Schritte bis Beta (Gate G3)
 
+- [ ] BAG-Prämien 2027 und Prämienregionen importieren, Stichproben gegen priminfo.admin.ch
+- [ ] Start-Quellen prüfen, aktivieren, `CRON_SECRET` und `ANTHROPIC_API_KEY` setzen, Cronjob einrichten
 - [ ] Start-Entwürfe prüfen und freigeben; Prüf-Routine (z. B. jeden Montag) im Team festlegen
 - [ ] Partner-/Affiliate-Feeds anbinden (Telecom, Bank) über den CSV-Import bzw. eine Import-API
 - [ ] Internet-Verfügbarkeit nach PLZ/Adresse (Glasfaser ja/nein) in die Profil-Passung aufnehmen

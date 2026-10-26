@@ -1,4 +1,5 @@
 import { CATEGORIES, isCategory } from './categories';
+import { parseCsvTable } from './csv';
 import { isISODate, today, type ISODate } from './dates';
 import { getDb, nowISO } from './db';
 import { CSV_COLUMNS, offerVisibility, type Offer, type OfferStatus } from './offer-types';
@@ -168,29 +169,15 @@ export function parseOffer(raw: RawOffer): { offer?: Offer; error?: string } {
   };
 }
 
-/** Einfacher CSV-Parser (Komma oder Semikolon, Anführungszeichen erlaubt). Erste Zeile = Spaltennamen. */
+/** CSV mit Kopfzeile in Rohwerte pro Angebot umwandeln. */
 export function parseCsv(text: string): RawOffer[] {
-  const lines = text.replace(/\r/g, '').split('\n').filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  const sep = lines[0].includes(';') ? ';' : ',';
-  const split = (line: string) => {
-    const out: string[] = [];
-    let cur = '';
-    let quoted = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (quoted && line[i + 1] === '"') { cur += '"'; i++; } else quoted = !quoted;
-      } else if (ch === sep && !quoted) { out.push(cur); cur = ''; } else cur += ch;
-    }
-    out.push(cur);
-    return out;
-  };
-  const header = split(lines[0]).map((h) => h.trim().toLowerCase());
-  return lines.slice(1).map((line) => {
-    const cells = split(line);
+  const { header, rows } = parseCsvTable(text);
+  const keys = header.map((h) => h.toLowerCase());
+  return rows.map((cells) => {
     const raw: Record<string, string> = {};
-    header.forEach((h, i) => { raw[h] = cells[i] ?? ''; });
+    keys.forEach((k, i) => {
+      raw[k] = cells[i] ?? '';
+    });
     return raw as RawOffer;
   });
 }

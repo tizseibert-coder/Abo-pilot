@@ -89,9 +89,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           {contract.category === 'krankenkasse_grund' ? (
             <>
               <p>
-                In der Grundversicherung sind die Leistungen bei allen Kassen gleich; es zählt nur die Prämie. Vergleichen
-                Sie neutral mit dem offiziellen Prämienrechner des Bundes:{' '}
-                <a href="https://www.priminfo.admin.ch" target="_blank" rel="noreferrer">priminfo.admin.ch</a>.
+                In der Grundversicherung sind die Leistungen bei allen Kassen gleich; es zählt nur die Prämie.{' '}
+                <Link href="/krankenkasse">Prämien für Ihren Haushalt vergleichen</Link> (offizielle BAG-Daten).
               </p>
               <p className="muted small">
                 Abo-Pilot erhält in der Grundversicherung keine Provision und gibt keine Daten an Krankenkassen weiter.

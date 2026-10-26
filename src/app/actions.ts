@@ -12,6 +12,9 @@ import { offerVisibility } from '@/lib/offer-types';
 import { getOffer, parseCsv, parseOffer, setOfferStatus, upsertOffer } from '@/lib/offers';
 import { historyOf, viewContract } from '@/lib/overview';
 import { DEFAULT_PROFILE, isInternetNeed, isMobileUsage, isRoaming, type Profile } from '@/lib/profile';
+import { deleteSource, getSource, runAllSources, runSource, saveSource } from '@/lib/crawler/run';
+import { parseBagPremiums, parseRegions, type KkModel, type Person } from '@/lib/kk/premiums';
+import { replacePremiums, replaceRegions, saveHealthSettings } from '@/lib/kk/repo';
 import * as repo from '@/lib/repo';
 
 export interface FormState {
@@ -321,4 +324,112 @@ export async function importOffersCsv(_: CsvImportState, fd: FormData): Promise<
   }
   revalidatePath('/admin/angebote');
   return { imported, errors };
+}
+
+// ---------- Krankenkasse (Grundversicherung) ----------
+
+export async function saveHealth(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const years = fd.getAll('birth_year').map((v) => Number(v));
+  const franchises = fd.getAll('franchise').map((v) => Number(v));
+  const accidents = fd.getAll('accident').map(String);
+  const persons: Person[] = [];
+  years.forEach((y, i) => {
+    if (!Number.isInteger(y) || y < 1900 || y > new Date().getFullYear()) return;
+    persons.push({ birthYear: y, franchise: Number.isFinite(franchises[i]) ? franchises[i] : 300, accident: accidents.includes(String(i)) });
+  });
+  const models = fd.getAll('model').map(String).filter((m): m is KkModel => ['BASE', 'HAM', 'HMO', 'DIV'].includes(m));
+  saveHealthSettings(user.id, { persons, models: models.length === 0 || models.length === 4 ? 'alle' : models });
+  const plz = str(fd, 'plz', 4);
+  if (/^\d{4}$/.test(plz)) {
+    const profile = repo.getProfile(user.id);
+    if (profile) repo.saveProfile(user.id, { ...profile, plz });
+  }
+  const region = str(fd, 'region', 10);
+  redirect(`/krankenkasse${region ? `?region=${encodeURIComponent(region)}` : ''}`);
+}
+
+// ---------- Datenimport (nur Team) ----------
+
+export interface DataImportState extends FormState {
+  message?: string;
+  errors?: string[];
+}
+
+async function readUploadOrUrl(fd: FormData): Promise<{ text: string; source: string }> {
+  const file = fd.get('file');
+  if (file instanceof File && file.size > 0) return { text: await file.text(), source: `Upload ${file.name}` };
+  const url = str(fd, 'url', 500);
+  if (!/^https:\/\//.test(url)) throw new Error('Bitte eine CSV-Datei hochladen oder eine https-URL angeben.');
+  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+  if (!res.ok) throw new Error(`Abruf fehlgeschlagen: HTTP ${res.status}`);
+  return { text: await res.text(), source: url };
+}
+
+export async function importKkData(_: DataImportState, fd: FormData): Promise<DataImportState> {
+  await requireAdmin();
+  const kind = str(fd, 'kind');
+  try {
+    const { text, source } = await readUploadOrUrl(fd);
+    if (kind === 'praemien') {
+      const { rows, errors } = parseBagPremiums(text);
+      if (rows.length === 0) return { error: 'Keine Prämien erkannt.', errors };
+      const r = replacePremiums(rows, source);
+      revalidatePath('/admin/daten');
+      return { message: `${r.count.toLocaleString('de-CH')} Prämien für ${r.years.join(', ')} importiert.`, errors };
+    }
+    if (kind === 'regionen') {
+      const { rows, errors } = parseRegions(text);
+      if (rows.length === 0) return { error: 'Keine Regionen erkannt.', errors };
+      const n = replaceRegions(rows, source);
+      revalidatePath('/admin/daten');
+      return { message: `${n.toLocaleString('de-CH')} PLZ-Zuordnungen importiert.`, errors };
+    }
+    return { error: 'Unbekannte Datenart.' };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// ---------- Angebotsquellen (nur Team) ----------
+
+export async function saveSourceAction(id: number | null, _: FormState, fd: FormData): Promise<FormState> {
+  await requireAdmin();
+  const category = str(fd, 'category');
+  const provider = str(fd, 'provider', 80);
+  const url = str(fd, 'url', 500);
+  const method = str(fd, 'method');
+  if (category !== 'mobile' && category !== 'internet' && category !== 'streaming' && category !== 'bank') return { error: 'Nur Handy, Internet, Streaming oder Bank.' };
+  if (!provider) return { error: 'Anbieter fehlt.' };
+  if (!/^https:\/\/[^\s]+$/.test(url)) return { error: 'Bitte eine https-URL der Anbieterseite angeben.' };
+  if (method !== 'auto' && method !== 'jsonld' && method !== 'ki') return { error: 'Unbekannte Methode.' };
+  try {
+    saveSource({ category, provider, url, method, active: fd.get('active') === 'on' ? 1 : 0 }, id ?? undefined);
+  } catch {
+    return { error: 'Diese URL ist bereits als Quelle erfasst.' };
+  }
+  revalidatePath('/admin/quellen');
+  redirect('/admin/quellen');
+}
+
+export async function removeSource(id: number): Promise<void> {
+  await requireAdmin();
+  deleteSource(id);
+  revalidatePath('/admin/quellen');
+  redirect('/admin/quellen');
+}
+
+export async function runSourceNow(id: number): Promise<void> {
+  await requireAdmin();
+  const s = getSource(id);
+  if (s) await runSource(s);
+  revalidatePath('/admin/quellen');
+  redirect('/admin/quellen');
+}
+
+export async function runAllSourcesNow(): Promise<void> {
+  await requireAdmin();
+  await runAllSources(true);
+  revalidatePath('/admin/quellen');
+  redirect('/admin/quellen');
 }
