@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { SEED_OFFERS } from '@/data/offers.seed';
 
 // Eine SQLite-Datei pro Instanz. Für die Beta auf einem Schweizer Server ausreichend;
 // bei Wachstum auf PostgreSQL wechseln (Schema ist bewusst portabel gehalten).
@@ -52,6 +53,41 @@ CREATE TABLE IF NOT EXISTS switches (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS switches_user ON switches(user_id);
+CREATE TABLE IF NOT EXISTS offers (
+  id TEXT PRIMARY KEY,
+  category TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  name TEXT NOT NULL,
+  monthly_price REAL NOT NULL,
+  promo_price REAL,
+  promo_months INTEGER NOT NULL DEFAULT 0,
+  bonus_chf REAL NOT NULL DEFAULT 0,
+  one_time_fee_chf REAL NOT NULL DEFAULT 0,
+  new_customer_lock_months INTEGER NOT NULL DEFAULT 0,
+  commission_chf REAL NOT NULL DEFAULT 0,
+  data_gb REAL,
+  roaming_eu INTEGER NOT NULL DEFAULT 0,
+  speed_mbps INTEGER,
+  includes_tv INTEGER NOT NULL DEFAULT 0,
+  min_term_months INTEGER NOT NULL DEFAULT 0,
+  valid_until TEXT,
+  source_url TEXT NOT NULL,
+  checked_at TEXT,
+  status TEXT NOT NULL DEFAULT 'entwurf',
+  notes TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS profiles (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  household_size INTEGER NOT NULL DEFAULT 1,
+  plz TEXT NOT NULL DEFAULT '',
+  mobile_lines INTEGER NOT NULL DEFAULT 1,
+  mobile_usage TEXT NOT NULL DEFAULT 'normal',
+  roaming TEXT NOT NULL DEFAULT 'europa',
+  internet_need TEXT NOT NULL DEFAULT 'schnell',
+  wants_tv INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
 `;
 
 let db: DatabaseSync | undefined;
@@ -63,8 +99,24 @@ export function getDb(): DatabaseSync {
     db = new DatabaseSync(file);
     db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     db.exec(SCHEMA);
+    seedOffers(db);
   }
   return db;
+}
+
+/** Legt die Start-Entwürfe einmalig an; bestehende Angebote werden nie überschrieben. */
+function seedOffers(d: DatabaseSync): void {
+  const insert = d.prepare(
+    `INSERT OR IGNORE INTO offers (id, category, provider, name, monthly_price, promo_price, promo_months, bonus_chf,
+      one_time_fee_chf, new_customer_lock_months, commission_chf, data_gb, roaming_eu, speed_mbps, includes_tv,
+      min_term_months, valid_until, source_url, checked_at, status, notes, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  for (const o of SEED_OFFERS) {
+    insert.run(o.id, o.category, o.provider, o.name, o.monthlyPrice, o.promoPrice, o.promoMonths, o.bonusChf, o.oneTimeFeeChf,
+      o.newCustomerLockMonths, o.commissionChf, o.dataGb, o.roamingEu ? 1 : 0, o.speedMbps, o.includesTv ? 1 : 0,
+      o.minTermMonths, o.validUntil, o.sourceUrl, o.checkedAt, o.status, o.notes, nowISO());
+  }
 }
 
 export function nowISO(): string {

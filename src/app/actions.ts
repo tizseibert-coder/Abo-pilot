@@ -2,13 +2,16 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { offerById } from '@/data/offers';
 import { createSession, destroySession, hashPassword, requireUser, verifyPassword } from '@/lib/auth';
 import { bonusEligibility } from '@/lib/benefit';
-import { isCategory } from '@/lib/categories';
+import { DEFAULT_TERMS, isCategory, type Category } from '@/lib/categories';
+import { isAdmin } from '@/lib/context';
 import { addDays, isISODate, parseISO, toISO, today } from '@/lib/dates';
 import { extractContract, type ExtractedContract } from '@/lib/extract';
+import { offerVisibility } from '@/lib/offer-types';
+import { getOffer, parseCsv, parseOffer, setOfferStatus, upsertOffer } from '@/lib/offers';
 import { historyOf, viewContract } from '@/lib/overview';
+import { DEFAULT_PROFILE, isInternetNeed, isMobileUsage, isRoaming, type Profile } from '@/lib/profile';
 import * as repo from '@/lib/repo';
 
 export interface FormState {
@@ -36,7 +39,7 @@ export async function register(_: FormState, fd: FormData): Promise<FormState> {
   if (repo.findUserByEmail(email)) return { error: 'Für diese E-Mail-Adresse besteht bereits ein Konto.' };
   const id = repo.createUser(email, hashPassword(password), name);
   await createSession(id);
-  redirect('/dashboard');
+  redirect('/start');
 }
 
 export async function login(_: FormState, fd: FormData): Promise<FormState> {
@@ -169,8 +172,8 @@ export async function importInvoice(prev: ImportState, fd: FormData): Promise<Im
 export async function recordSwitch(contractId: number, offerId: string): Promise<void> {
   const user = await requireUser();
   const contract = repo.getContract(user.id, contractId);
-  const offer = offerById(offerId);
-  if (!contract || !offer || offer.category !== contract.category) redirect('/dashboard');
+  const offer = getOffer(offerId);
+  if (!contract || !offer || offer.category !== contract.category || offerVisibility(offer, today()) !== 'sichtbar') redirect('/dashboard');
   const all = repo.listContracts(user.id);
   const switches = repo.listSwitches(user.id);
   const todayISO = today();
@@ -197,4 +200,125 @@ export async function updateSwitch(id: number, fd: FormData): Promise<void> {
   }
   revalidatePath('/praemien');
   redirect('/praemien');
+}
+
+// ---------- Profil-Assistent ----------
+
+const QUICK: { key: string; category: Category; label: string }[] = [
+  { key: 'mobile', category: 'mobile', label: 'Handy-Abo' },
+  { key: 'internet', category: 'internet', label: 'Internet' },
+  { key: 'health', category: 'krankenkasse_grund', label: 'Krankenkasse' },
+  { key: 'streaming', category: 'streaming', label: 'Streaming' },
+];
+
+export async function saveOnboarding(_: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const household = int(fd, 'household_size', 1, 12);
+  const lines = int(fd, 'mobile_lines', 0, 12);
+  const plz = str(fd, 'plz', 4);
+  const usage = str(fd, 'mobile_usage');
+  const roaming = str(fd, 'roaming');
+  const internet = str(fd, 'internet_need');
+  if (household === null || household < 1 || lines === null) return { error: 'Bitte Anzahl Personen und Handys angeben.' };
+  if (plz && !/^\d{4}$/.test(plz)) return { error: 'Die Postleitzahl hat 4 Ziffern.' };
+
+  const profile: Profile = {
+    householdSize: household,
+    plz,
+    mobileLines: lines,
+    mobileUsage: isMobileUsage(usage) ? usage : DEFAULT_PROFILE.mobileUsage,
+    roaming: isRoaming(roaming) ? roaming : DEFAULT_PROFILE.roaming,
+    internetNeed: isInternetNeed(internet) ? internet : DEFAULT_PROFILE.internetNeed,
+    wantsTv: fd.get('wants_tv') === 'on',
+  };
+
+  // Schnellerfassung: nur ausgefüllte Zeilen, nur wenn in der Kategorie noch kein aktiver Vertrag existiert.
+  const existing = new Set(repo.listContracts(user.id).filter((c) => c.status === 'aktiv').map((c) => c.category));
+  const toCreate: repo.ContractInput[] = [];
+  for (const q of QUICK) {
+    const priceRaw = str(fd, `${q.key}_price`);
+    if (!priceRaw) continue;
+    const price = Number(priceRaw.replace(/['’\s]/g, '').replace(',', '.'));
+    if (!Number.isFinite(price) || price < 0 || price > 10_000) return { error: `${q.label}: Bitte einen gültigen Betrag pro Monat angeben.` };
+    if (existing.has(q.category)) continue;
+    const t = DEFAULT_TERMS[q.category];
+    toCreate.push({
+      category: q.category,
+      provider: str(fd, `${q.key}_provider`, 120) || `Mein ${q.label}`,
+      product: '',
+      customer_number: '',
+      monthly_price: Math.round(price * 100) / 100,
+      start_date: null,
+      min_term_months: t.minTermMonths,
+      renewal_months: t.renewalMonths,
+      notice_months: t.noticeMonths,
+      to_month_end: t.toMonthEnd ? 1 : 0,
+      notes: 'Aus dem Profil-Assistenten. Laufzeit und Frist sind Annahmen – bitte prüfen.',
+    });
+  }
+  repo.saveProfile(user.id, profile);
+  for (const c of toCreate) repo.createContract(user.id, c);
+  revalidatePath('/dashboard');
+  redirect('/dashboard?willkommen=1');
+}
+
+// ---------- Angebotspflege (nur Team) ----------
+
+async function requireAdmin() {
+  const user = await requireUser();
+  if (!isAdmin(user)) redirect('/dashboard');
+  return user;
+}
+
+function rawFromForm(fd: FormData) {
+  const raw: Record<string, string> = {};
+  for (const [k, v] of fd.entries()) if (typeof v === 'string') raw[k] = v;
+  for (const k of ['roaming_eu', 'includes_tv']) raw[k] = fd.get(k) === 'on' ? '1' : '0';
+  return raw;
+}
+
+export async function saveOffer(_: FormState, fd: FormData): Promise<FormState> {
+  await requireAdmin();
+  const { offer, error } = parseOffer(rawFromForm(fd));
+  if (!offer) return { error };
+  // Jede Änderung setzt das Angebot auf Entwurf zurück: erst nach erneuter Prüfung wieder sichtbar.
+  upsertOffer(offer);
+  revalidatePath('/admin/angebote');
+  redirect('/admin/angebote');
+}
+
+export async function markOfferChecked(id: string): Promise<void> {
+  await requireAdmin();
+  setOfferStatus(id, 'geprüft', today());
+  revalidatePath('/admin/angebote');
+  redirect('/admin/angebote');
+}
+
+export async function archiveOffer(id: string): Promise<void> {
+  await requireAdmin();
+  setOfferStatus(id, 'archiviert');
+  revalidatePath('/admin/angebote');
+  redirect('/admin/angebote');
+}
+
+export interface CsvImportState extends FormState {
+  imported?: number;
+  errors?: string[];
+}
+
+export async function importOffersCsv(_: CsvImportState, fd: FormData): Promise<CsvImportState> {
+  await requireAdmin();
+  const rows = parseCsv(String(fd.get('csv') ?? ''));
+  if (rows.length === 0) return { error: 'Keine Zeilen gefunden. Erste Zeile muss die Spaltennamen enthalten.' };
+  const errors: string[] = [];
+  let imported = 0;
+  for (const raw of rows) {
+    const { offer, error } = parseOffer(raw);
+    if (offer) {
+      upsertOffer(offer);
+      imported++;
+    } else if (error) errors.push(error);
+  }
+  revalidatePath('/admin/angebote');
+  return { imported, errors };
 }

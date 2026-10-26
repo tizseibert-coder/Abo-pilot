@@ -9,6 +9,9 @@ Entwicklungsplan & Rechtsrahmen».
 | Funktion | Wo |
 | --- | --- |
 | Konto mit E-Mail und Passwort (scrypt-Hash, httpOnly-Session-Cookie) | `/` |
+| Profil-Assistent: Haushalt, Nutzung, heutige Kosten – legt Verträge automatisch an | `/start` |
+| Nur passende Angebote zuerst (Datenmenge, EU-Roaming, Internet-Speed, TV) | `src/lib/profile.ts` |
+| Angebotspflege mit Prüfprozess, Quelle, Gültigkeit und CSV-Import (nur Team) | `/admin/angebote` |
 | Vertrag erfassen, auch aus eingefügtem Rechnungstext oder PDF (Anbieter, Preis, Nummer, Beginn) | `/vertraege/neu` |
 | Fristenrechner: Mindestlaufzeit, automatische Verlängerung, Monatsende, Krankenkasse (30.11.) | `src/lib/deadlines.ts` |
 | Ampel und Übersicht, Krankenkassen-Hinweis im Herbst mit Link auf priminfo.admin.ch | `/dashboard` |
@@ -21,8 +24,19 @@ Entwicklungsplan & Rechtsrahmen».
 Bewusst **nicht** im MVP (siehe Rechtsrahmen): Provisionen aus der Grundversicherung, Versicherungsvergleiche
 (Stufe 2, erst mit registriertem Broker), automatischer Abschluss, Zugriff auf Postfach oder Bankkonto.
 
-> **Die Angebotsdaten sind fiktive Beispieldaten** (`src/data/offers.ts`). Vor dem Livegang durch geprüfte
-> Partner-Feeds mit Quelle und Stichtag ersetzen.
+## Aktuelle Angebote
+
+Angebote liegen in der Datenbank, nicht im Code. Kundinnen und Kunden sehen ein Angebot nur, wenn es
+**geprüft**, **nicht abgelaufen** (`valid_until`) und **höchstens 30 Tage seit der letzten Prüfung** ist.
+Jede Änderung oder jeder Import setzt ein Angebot auf «Entwurf» zurück.
+
+- Team-Zugang: E-Mail-Adressen in `ADMIN_EMAILS` (kommagetrennt) sehen den Menüpunkt «Angebote».
+- Start-Entwürfe (`src/data/offers.seed.ts`) stammen aus einer Websuche vom 26.10.2026. Sie sind **nicht** auf den
+  Anbieterseiten verifiziert und widersprechen sich teilweise. Vor der Freigabe die Quelle öffnen, korrigieren, «Heute geprüft».
+- Partner-Feeds oder Tabellen: CSV mit den Spalten aus `CSV_COLUMNS` (`src/lib/offer-types.ts`) einfügen.
+- Nur Stufe-1-Kategorien (Handy, Internet, Streaming, Bank) sind importierbar; Versicherungen und Grundversicherung
+  werden abgewiesen (Rechtsrahmen).
+- Kein automatisches Scraping von Anbieterseiten (UWG Art. 5 lit. c, Anbieter-AGB). Ziel sind Partner- oder Affiliate-Feeds.
 
 ## Starten
 
@@ -36,6 +50,7 @@ npm run build && COOKIE_SECURE=false npm start   # Produktionsbuild lokal über 
 ```
 
 Die Daten liegen in `data/abo-pilot.db` (über `ABO_DB_PATH` änderbar, nicht im Git).
+Für die Angebotspflege z. B. `ADMIN_EMAILS=du@example.ch npm run dev`.
 
 ## Betrieb in der Schweiz
 
@@ -53,7 +68,7 @@ Das Volume `/data` täglich verschlüsselt sichern.
 src/
   app/            Seiten (Next.js App Router) und Server Actions (actions.ts)
   components/     Formulare (Client-Komponenten)
-  data/offers.ts  Beispiel-Angebote
+  data/offers.seed.ts  Start-Entwürfe für Angebote (ungeprüft)
   lib/
     dates.ts      Datumsrechnung in UTC
     deadlines.ts  Fristen und Ampel
@@ -61,13 +76,17 @@ src/
     extract.ts    Felderkennung aus Rechnungstext
     letter.ts     Kündigungsbrief, Reklamation
     ics.ts        Kalender-Export
+    offers.ts     Angebots-DB, Sichtbarkeit, CSV-Import
+    profile.ts    Kundenprofil und Passung
     db.ts, repo.ts, auth.ts
 tests/            Vitest
 ```
 
 ## Nächste Schritte bis Beta (Gate G3)
 
-- [ ] Echte Angebotsdaten: zwei Partner-Feeds anbinden (Telecom, Bank), Stichtag und Quelle anzeigen
+- [ ] Start-Entwürfe prüfen und freigeben; Prüf-Routine (z. B. jeden Montag) im Team festlegen
+- [ ] Partner-/Affiliate-Feeds anbinden (Telecom, Bank) über den CSV-Import bzw. eine Import-API
+- [ ] Internet-Verfügbarkeit nach PLZ/Adresse (Glasfaser ja/nein) in die Profil-Passung aufnehmen
 - [ ] E-Mail-Erinnerungen zusätzlich zum Kalender (Schweizer Versanddienst, Double-Opt-in)
 - [ ] Passwort-Reset und E-Mail-Bestätigung
 - [ ] Rate-Limiting für Login und Import

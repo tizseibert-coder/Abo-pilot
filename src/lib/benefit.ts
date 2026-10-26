@@ -1,5 +1,6 @@
-import type { Offer } from '@/data/offers';
 import { addMonths, parseISO, type ISODate } from './dates';
+import type { Offer } from './offer-types';
+import { profileGaps, type Profile } from './profile';
 
 export const HORIZON_MONTHS = 24;
 
@@ -19,6 +20,8 @@ export interface BenefitResult {
   netBenefit: number;
   eligibleForBonus: boolean;
   ineligibleReason: string | null;
+  /** Gründe, warum das Angebot nicht zum Profil passt; leer = passt */
+  gaps: string[];
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -45,10 +48,16 @@ export function bonusEligibility(offer: Offer, history: PastContract[], todayISO
 }
 
 /**
- * Rangliste nach Nettonutzen. Die Provision fliesst bewusst NICHT in die Sortierung ein
- * (Transparenz-Charta, UWG Art. 3 Abs. 1 lit. e).
+ * Rangliste: zuerst was zum Profil passt, darin nach Nettonutzen. Die Provision fliesst bewusst
+ * NICHT in die Sortierung ein (Transparenz-Charta, UWG Art. 3 Abs. 1 lit. e).
  */
-export function rankOffers(currentMonthly: number, offers: Offer[], history: PastContract[], todayISO: ISODate): BenefitResult[] {
+export function rankOffers(
+  currentMonthly: number,
+  offers: Offer[],
+  history: PastContract[],
+  todayISO: ISODate,
+  profile: Profile | null = null,
+): BenefitResult[] {
   const currentCost = round2(currentMonthly * HORIZON_MONTHS);
   return offers
     .map((offer) => {
@@ -64,9 +73,13 @@ export function rankOffers(currentMonthly: number, offers: Offer[], history: Pas
         netBenefit: round2(currentCost - cost + bonus - offer.oneTimeFeeChf),
         eligibleForBonus: reason === null,
         ineligibleReason: reason,
+        gaps: profileGaps(offer, profile),
       };
     })
-    .sort((a, b) => b.netBenefit - a.netBenefit || a.offer.id.localeCompare(b.offer.id));
+    .sort(
+      (a, b) =>
+        Number(a.gaps.length > 0) - Number(b.gaps.length > 0) || b.netBenefit - a.netBenefit || a.offer.id.localeCompare(b.offer.id),
+    );
 }
 
 export function formatChf(n: number): string {

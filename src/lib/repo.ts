@@ -1,5 +1,6 @@
 import { getDb, nowISO } from './db';
 import type { ISODate } from './dates';
+import { DEFAULT_PROFILE, isInternetNeed, isMobileUsage, isRoaming, type Profile } from './profile';
 
 export interface User {
   id: number;
@@ -118,4 +119,42 @@ export function createSwitch(userId: number, s: Pick<Switch, 'contract_id' | 'of
 
 export function setSwitchStatus(userId: number, id: number, status: Switch['status']): void {
   getDb().prepare('UPDATE switches SET status = ? WHERE user_id = ? AND id = ?').run(status, userId, id);
+}
+
+// ---------- Profil ----------
+
+interface ProfileRow {
+  household_size: number;
+  plz: string;
+  mobile_lines: number;
+  mobile_usage: string;
+  roaming: string;
+  internet_need: string;
+  wants_tv: number;
+}
+
+export function getProfile(userId: number): Profile | null {
+  const r = getDb().prepare('SELECT * FROM profiles WHERE user_id = ?').get(userId) as ProfileRow | undefined;
+  if (!r) return null;
+  return {
+    householdSize: r.household_size,
+    plz: r.plz,
+    mobileLines: r.mobile_lines,
+    mobileUsage: isMobileUsage(r.mobile_usage) ? r.mobile_usage : DEFAULT_PROFILE.mobileUsage,
+    roaming: isRoaming(r.roaming) ? r.roaming : DEFAULT_PROFILE.roaming,
+    internetNeed: isInternetNeed(r.internet_need) ? r.internet_need : DEFAULT_PROFILE.internetNeed,
+    wantsTv: r.wants_tv === 1,
+  };
+}
+
+export function saveProfile(userId: number, p: Profile): void {
+  getDb()
+    .prepare(
+      `INSERT INTO profiles (user_id, household_size, plz, mobile_lines, mobile_usage, roaming, internet_need, wants_tv, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET household_size = excluded.household_size, plz = excluded.plz,
+        mobile_lines = excluded.mobile_lines, mobile_usage = excluded.mobile_usage, roaming = excluded.roaming,
+        internet_need = excluded.internet_need, wants_tv = excluded.wants_tv, updated_at = excluded.updated_at`,
+    )
+    .run(userId, p.householdSize, p.plz, p.mobileLines, p.mobileUsage, p.roaming, p.internetNeed, p.wantsTv ? 1 : 0, nowISO());
 }

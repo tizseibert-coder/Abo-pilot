@@ -4,15 +4,18 @@ import { formatChf } from '@/lib/benefit';
 import { categoryLabel } from '@/lib/categories';
 import { formatCH, today } from '@/lib/dates';
 import { URGENCY_LABEL } from '@/lib/deadlines';
+import { offerContext } from '@/lib/context';
 import { buildOverview } from '@/lib/overview';
-import { listContracts, listSwitches } from '@/lib/repo';
+import { getProfile, listContracts, listSwitches } from '@/lib/repo';
 
 export const dynamic = 'force-dynamic';
 
-export default async function Dashboard() {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ willkommen?: string }> }) {
   const user = await requireUser();
+  const { willkommen } = await searchParams;
   const todayISO = today();
-  const { views, monthlyTotal, potential, inactive } = buildOverview(listContracts(user.id), listSwitches(user.id), todayISO);
+  const hasProfile = getProfile(user.id) !== null;
+  const { views, monthlyTotal, potential, inactive } = buildOverview(listContracts(user.id), listSwitches(user.id), todayISO, offerContext(user.id));
   const month = Number(todayISO.slice(5, 7));
   const healthSeason = month >= 9 && todayISO <= `${todayISO.slice(0, 4)}-11-30`;
   const hasHealth = views.some((v) => v.contract.category === 'krankenkasse_grund');
@@ -21,6 +24,19 @@ export default async function Dashboard() {
     <>
       <h1>Übersicht</h1>
       <p className="lead">Stand {formatCH(todayISO)}. Dringende Fristen stehen oben.</p>
+
+      {willkommen && (
+        <p className="notice">
+          Profil gespeichert. Laufzeiten und Fristen der neu angelegten Verträge sind Annahmen: Öffnen Sie einen Vertrag
+          und ergänzen Sie Beginn und Frist, oder fügen Sie eine Rechnung ein.
+        </p>
+      )}
+      {!hasProfile && (
+        <p className="notice">
+          <strong>Noch 2 Minuten:</strong> <Link href="/start">Profil ausfüllen</Link>, damit wir nur Angebote zeigen, die zu
+          Ihrer Nutzung passen.
+        </p>
+      )}
 
       {healthSeason && (
         <p className="notice">
@@ -44,7 +60,9 @@ export default async function Dashboard() {
 
       {views.length === 0 ? (
         <div className="card">
-          <p>Noch keine Verträge erfasst. Starten Sie mit Handy-Abo, Internet oder Krankenkasse – dort liegt das meiste Geld.</p>
+          <p>
+            Noch keine Verträge erfasst. Am schnellsten geht es mit dem <Link href="/start">Profil-Assistenten</Link>.
+          </p>
         </div>
       ) : (
         <div className="table-wrap">

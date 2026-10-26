@@ -6,6 +6,7 @@ import { formatChf, HORIZON_MONTHS } from '@/lib/benefit';
 import { CATEGORIES, categoryLabel, isCategory } from '@/lib/categories';
 import { formatCH, today } from '@/lib/dates';
 import { URGENCY_LABEL } from '@/lib/deadlines';
+import { offerContext } from '@/lib/context';
 import { historyOf, viewContract } from '@/lib/overview';
 import { getContract, listContracts, listSwitches } from '@/lib/repo';
 import { markCancelled, reactivate, recordSwitch, removeContract } from '../../actions';
@@ -19,7 +20,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   if (!contract) notFound();
 
   const todayISO = today();
-  const view = viewContract(contract, historyOf(listContracts(user.id), listSwitches(user.id)), todayISO);
+  const ctx = offerContext(user.id);
+  const view = viewContract(contract, historyOf(listContracts(user.id), listSwitches(user.id)), todayISO, ctx);
   const stage = isCategory(contract.category) ? CATEGORIES[contract.category].stage : 0;
   const active = contract.status === 'aktiv';
 
@@ -98,7 +100,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           ) : stage === 2 ? (
             <p className="muted">Versicherungsvergleiche folgen in einer späteren Version. Wir überwachen bis dahin Ihre Frist.</p>
           ) : view.offers.length === 0 ? (
-            <p className="muted">Für diese Kategorie haben wir noch keine Angebote. Wir überwachen Ihre Frist.</p>
+            <p className="muted">Zurzeit haben wir hier kein geprüftes, aktuelles Angebot. Wir überwachen Ihre Frist.</p>
           ) : (
             <p className="small muted">
               Nettonutzen über {HORIZON_MONTHS} Monate = heutige Kosten − neue Kosten + Prämie − Einmalkosten. Sortiert
@@ -111,10 +113,11 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       {view.offers.length > 0 && stage === 1 && (
         <>
           <h2>Angebote nach Nettonutzen</h2>
-          <p className="notice small">
-            Beispieldaten: Die Angebote sind fiktiv und dienen zum Testen. Vor dem Livegang ersetzen wir sie durch geprüfte
-            Partnerdaten mit Quelle und Stichtag.
-          </p>
+          {!ctx.profile && (
+            <p className="notice small">
+              Tipp: Mit Ihrem <Link href="/start">Profil</Link> blenden wir Angebote aus, die nicht zu Ihrer Nutzung passen.
+            </p>
+          )}
           <div className="table-wrap">
             <table>
               <thead>
@@ -135,8 +138,14 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                       <strong>{r.offer.provider}</strong>
                       <div className="muted small">
                         {r.offer.name} · {formatChf(r.offer.monthlyPrice)}/Mt.
-                        {r.offer.promoPrice !== null && r.offer.promoMonths > 0 && `, ${r.offer.promoMonths} Mt. à ${formatChf(r.offer.promoPrice)}`}
+                        {r.offer.promoPrice !== null && r.offer.promoMonths > 0 && (r.offer.promoMonths >= 999 ? `, dauerhaft ${formatChf(r.offer.promoPrice)}` : `, ${r.offer.promoMonths} Mt. à ${formatChf(r.offer.promoPrice)}`)}
                       </div>
+                      <div className="muted small">
+                        Preis geprüft am {formatCH(r.offer.checkedAt)} · <a href={r.offer.sourceUrl} target="_blank" rel="noreferrer">Anbieterseite</a>
+                        {r.offer.validUntil && ` · Aktion bis ${formatCH(r.offer.validUntil)}`}
+                        {r.offer.minTermMonths > 0 && ` · ${r.offer.minTermMonths} Mt. Laufzeit`}
+                      </div>
+                      {r.gaps.length > 0 && <div className="small" style={{ color: 'var(--warn)' }}>Passt nicht ganz: {r.gaps.join(', ')}</div>}
                       {r.ineligibleReason && <div className="small error">{r.ineligibleReason}</div>}
                     </td>
                     <td className="num">{formatChf(r.offerCost)}</td>
@@ -147,7 +156,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                     </td>
                     <td className="num muted">{formatChf(r.offer.commissionChf)}</td>
                     <td>
-                      {active && r.netBenefit > 0 && (
+                      {active && r.netBenefit > 0 && r.gaps.length === 0 && (
                         <form action={recordSwitch.bind(null, contract.id, r.offer.id)} className="inline-form">
                           <button type="submit" className="secondary">Wechsel vormerken</button>
                         </form>

@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { SAMPLE_OFFERS, offersFor, type Offer } from '@/data/offers';
 import { bonusEligibility, formatChf, offerCost, rankOffers } from '@/lib/benefit';
+import { offerVisibility, type Offer } from '@/lib/offer-types';
+import { parseCsv, parseOffer } from '@/lib/offers';
+import { DEFAULT_PROFILE, profileGaps } from '@/lib/profile';
 import { extractContract } from '@/lib/extract';
 import { buildCalendar } from '@/lib/ics';
 
-const offer = (o: Partial<Offer>): Offer => ({ ...SAMPLE_OFFERS[0], ...o });
+const BASE: Offer = {
+  id: 'test-mobile', category: 'mobile', provider: 'Test Mobil', name: 'Unlimitiert', monthlyPrice: 29.9, promoPrice: null,
+  promoMonths: 0, bonusChf: 0, oneTimeFeeChf: 0, newCustomerLockMonths: 0, commissionChf: 0, dataGb: null, roamingEu: true,
+  speedMbps: null, includesTv: false, minTermMonths: 0, validUntil: null, sourceUrl: 'https://example.ch/tarif',
+  checkedAt: '2026-10-20', status: 'geprüft', notes: '',
+};
+const offer = (o: Partial<Offer>): Offer => ({ ...BASE, ...o });
 
 describe('benefit', () => {
   it('costs promo months at promo price', () => {
@@ -29,9 +37,12 @@ describe('benefit', () => {
     expect(r.bonus).toBe(0);
   });
 
-  it('only offers stage-1 categories', () => {
-    expect(offersFor('krankenkasse_grund')).toEqual([]);
-    expect(offersFor('mobile').length).toBeGreaterThan(0);
+  it('puts offers that fit the profile first', () => {
+    const small = offer({ id: 'small', monthlyPrice: 5, dataGb: 2, roamingEu: false });
+    const fits = offer({ id: 'fits', monthlyPrice: 20 });
+    const ranked = rankOffers(40, [small, fits], [], '2026-10-26', { ...DEFAULT_PROFILE, mobileUsage: 'normal' });
+    expect(ranked.map((r) => r.offer.id)).toEqual(['fits', 'small']);
+    expect(ranked[1].gaps).toEqual(['nur 2 GB, empfohlen ab 20 GB', 'kein EU-Roaming inklusive']);
   });
 
   it('formats Swiss francs', () => {
@@ -67,5 +78,40 @@ describe('ics', () => {
     expect(ics).toContain('SUMMARY:Frist\\, Test');
     expect(ics).toContain('TRIGGER:-P7D');
     expect(ics.endsWith('END:VCALENDAR\r\n')).toBe(true);
+  });
+});
+
+describe('profileGaps', () => {
+  it('checks internet speed and TV', () => {
+    const net = offer({ category: 'internet', speedMbps: 100, includesTv: false });
+    expect(profileGaps(net, { ...DEFAULT_PROFILE, internetNeed: 'sehr_schnell', wantsTv: true })).toEqual(['100 Mbit/s, empfohlen ab 1000', 'ohne TV']);
+    expect(profileGaps(net, { ...DEFAULT_PROFILE, internetNeed: 'schnell' })).toEqual([]);
+    expect(profileGaps(net, null)).toEqual([]);
+  });
+  it('heavy users need unlimited data', () => {
+    expect(profileGaps(offer({ dataGb: 50 }), { ...DEFAULT_PROFILE, mobileUsage: 'viel' })).toEqual(['nur 50 GB, Sie brauchen unlimitiert']);
+  });
+});
+
+describe('offer visibility', () => {
+  it('shows only checked, current, fresh offers', () => {
+    expect(offerVisibility(BASE, '2026-10-26')).toBe('sichtbar');
+    expect(offerVisibility(offer({ status: 'entwurf', checkedAt: null }), '2026-10-26')).toBe('entwurf');
+    expect(offerVisibility(offer({ checkedAt: '2026-09-01' }), '2026-10-26')).toBe('veraltet');
+    expect(offerVisibility(offer({ validUntil: '2026-10-25' }), '2026-10-26')).toBe('abgelaufen');
+    expect(offerVisibility(offer({ status: 'archiviert' }), '2026-10-26')).toBe('archiviert');
+  });
+});
+
+describe('offer import', () => {
+  it('parses CSV with semicolons and quotes into drafts', () => {
+    const rows = parseCsv('id;category;provider;name;monthly_price;promo_price;promo_months;source_url;roaming_eu;notes\nabc-1;mobile;Anbieter;Tarif;29,90;14.90;12;https://a.ch/x;ja;"mit ; Semikolon"');
+    const { offer: o, error } = parseOffer(rows[0]);
+    expect(error).toBeUndefined();
+    expect(o).toMatchObject({ id: 'abc-1', monthlyPrice: 29.9, promoPrice: 14.9, promoMonths: 12, roamingEu: true, status: 'entwurf', checkedAt: null, notes: 'mit ; Semikolon' });
+  });
+  it('rejects missing source and bad category', () => {
+    expect(parseOffer({ id: 'abc-2', category: 'mobile', provider: 'A', name: 'B', monthly_price: '10' }).error).toMatch(/Quelle/);
+    expect(parseOffer({ id: 'abc-3', category: 'auto', provider: 'A', name: 'B', monthly_price: '10', source_url: 'https://a.ch' }).error).toMatch(/Kategorie/);
   });
 });
