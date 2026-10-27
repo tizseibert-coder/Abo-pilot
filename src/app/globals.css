@@ -306,6 +306,21 @@ button.link { background: none; border: 0; color: var(--muted); padding: 0; text
 .review-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 .review-row label { flex: 0 1 220px; }
 
+/* Fortschritt (digitale Kündigung) */
+.progress { list-style: none; padding: 0; margin: 0 0 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.progress li { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--faint); border-top: 3px solid var(--border); padding-top: 8px; }
+.progress li span { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-weight: 600; font-size: 0.75rem; flex: none; }
+.progress li span .svg-icon { width: 13px; height: 13px; }
+.progress li.done { color: var(--good); border-color: var(--good); }
+.progress li.done span { background: var(--good-bg); }
+.progress li.now { color: var(--text); font-weight: 600; border-color: var(--ink); }
+.progress li.now span { background: var(--ink); color: var(--ink-text); }
+@media (max-width: 600px) { .progress { grid-template-columns: repeat(2, 1fr); } }
+
+/* QR-Scan */
+.scan-box { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 14px 16px; border: 1px dashed var(--border-strong); border-radius: 12px; background: var(--surface-2); }
+.qr-scan { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
 /* Chips (Schnell-Check) */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip, .chip-btn {

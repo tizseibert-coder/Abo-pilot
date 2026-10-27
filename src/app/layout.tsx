@@ -33,6 +33,8 @@ const TEAM: NavItem[] = [
   { href: '/admin/angebote', label: 'Angebote prüfen', icon: 'tag' },
   { href: '/admin/quellen', label: 'Quellen', icon: 'search' },
   { href: '/admin/daten', label: 'Offizielle Daten', icon: 'database' },
+  { href: '/admin/adressen', label: 'Kündigungsadressen', icon: 'mail' },
+  { href: '/admin/postausgang', label: 'Postausgang', icon: 'sliders' },
 ];
 
 function Brand({ href }: { href: string }) {

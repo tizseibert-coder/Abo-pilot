@@ -40,8 +40,11 @@ export default async function CancellationLetter({ params, searchParams }: { par
               <li className="warn">
                 <span className="mark"><Icon name="mail" /></span>
                 <div>
-                  <strong>1. Brief unten unterschreiben und eingeschrieben senden</strong>
-                  <span className="txt">Muss bis {formatCH(deadline.deadline)} bei {contract.provider} eintreffen – Poststempel reicht nicht.</span>
+                  <strong>1. Kündigung unterschreiben und senden</strong>
+                  <span className="txt">
+                    Muss bis {formatCH(deadline.deadline)} bei {contract.provider} eintreffen.{' '}
+                    <Link href={`/vertraege/${contract.id}/versand`}>Digital unterschreiben und senden lassen</Link> oder den Brief unten drucken.
+                  </span>
                 </div>
               </li>
               {offer && (

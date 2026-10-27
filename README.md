@@ -20,6 +20,10 @@ Entwicklungsplan & Rechtsrahmen».
 | Überprüfung mit Datum: Vorschlag (60 Tage vor Frist, KK 1. Oktober), «Alles gut – geprüft» mit einem Klick, im Kalender | Vertragsseite |
 | Wechsel-Assistent: Frist, Sperrfrist, Startdatum, Portierung geprüft; Sparpotenzial pro Monat / 1. Jahr / 24 Mt.; ein Klick startet Kündigung + Prämien-Tracking | `/vertraege/[id]/wechseln` |
 | Krankenkasse wechseln mit einem Klick aus dem Vergleich: Kündigungsbrief inkl. versicherter Personen + Checkliste | `/krankenkasse` |
+| QR-Rechnung scannen (nur im Browser): Anbieter, Betrag, Rechnungsadresse ohne Tippen | `/vertraege/neu` |
+| Foto einer Rechnung/Police lesen (Claude Vision, strukturierte Ausgabe) | `/vertraege/neu` → «Rechnung / alle Details» |
+| Digital kündigen: PDF → QES (Skribble) → Original per E-Mail an Anbieter, optional eingeschriebene Kopie (Pingen) | `/vertraege/[id]/versand` |
+| Kündigungsadressen-Verzeichnis (Team, mit Quelle) und Postausgang | `/admin/adressen`, `/admin/postausgang` |
 | Fristenrechner: Mindestlaufzeit, automatische Verlängerung, Monatsende, Krankenkasse (30.11.) | `src/lib/deadlines.ts` |
 | Ampel und Übersicht, Krankenkassen-Hinweis im Herbst mit Link auf priminfo.admin.ch | `/dashboard` |
 | Kalender-Export (.ics) mit Erinnerungen 60/30/7 Tage vorher | `/api/kalender` |
@@ -72,6 +76,27 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/a
 Die Start-Quellen (`src/data/sources.seed.ts`) sind inaktiv angelegt: URL und Nutzungsbedingungen prüfen, dann aktivieren.
 Die BAG-Spaltennamen werden tolerant erkannt (`src/lib/kk/premiums.ts`). Nach dem ersten echten Import Stichproben
 mit priminfo.admin.ch vergleichen, weil das genaue Dateiformat hier nicht überprüft werden konnte.
+
+## Digitale Kündigung
+
+Ablauf: PDF im Schweizer Fensterformat (`src/lib/dispatch/pdf.ts`) → qualifizierte elektronische Signatur durch die
+Kundin/den Kunden → auf ausdrückliche Freigabe Versand des **signierten Originals per E-Mail** an die Kündigungsadresse
+(Kopie an die Kundin/den Kunden) und optional einer **eingeschriebenen Kopie per Post** als Zustellnachweis.
+
+Rechtlich: Die QES ist der eigenhändigen Unterschrift gleichgestellt (Art. 14 Abs. 2bis OR) – aber nur als elektronisches
+Dokument. Ein ausgedrucktes QES-PDF ist keine gültige Unterschrift; darum ist die E-Mail das Original und die Post die
+Beweiskopie. Abo-Pilot bleibt Botin: Inhalt und Unterschrift kommen von der Kundin/dem Kunden, jede Übermittlung
+braucht ihre/seine Bestätigung.
+
+| Dienst | Test (Standard) | Produktiv | Variable |
+| --- | --- | --- | --- |
+| Signatur | Testseite mit ungültigem Vermerk | Skribble API v2 (QES, ZertES) | `SIGN_PROVIDER=skribble` |
+| E-Mail | Postausgang in der DB | SMTP (z. B. Infomaniak) | `MAIL_PROVIDER=smtp` |
+| Post | Test-Briefe in der DB | Pingen API v2 (Einschreiben) | `POST_PROVIDER=pingen` |
+
+Die Skribble- und Pingen-Anbindung (`src/lib/dispatch/providers.ts`) folgt deren API v2 nach bestem Wissen, konnte hier aber
+nicht gegen die echten Dienste getestet werden: vor dem Livegang im Staging beider Anbieter prüfen (Endpunkte, Feldnamen,
+Produktcode für Einschreiben, Webhooks).
 
 ## Starten
 

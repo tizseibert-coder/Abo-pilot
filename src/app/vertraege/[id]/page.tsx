@@ -54,7 +54,8 @@ export default async function ContractPage({ params, searchParams }: { params: P
         </div>
         <div className="actions">
           <Link className="button secondary" href={`/vertraege/${contract.id}/bearbeiten`}>Bearbeiten</Link>
-          {active && <Link className="button" href={`/vertraege/${contract.id}/kuendigung`}><Icon name="mail" /> Kündigungsbrief</Link>}
+          {active && <Link className="button secondary" href={`/vertraege/${contract.id}/kuendigung`}>Brief drucken</Link>}
+          <Link className="button" href={`/vertraege/${contract.id}/versand`}><Icon name="lock" /> Digital kündigen</Link>
         </div>
       </div>
 

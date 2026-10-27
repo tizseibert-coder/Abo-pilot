@@ -118,6 +118,66 @@ CREATE TABLE IF NOT EXISTS data_imports (
   note TEXT NOT NULL DEFAULT '',
   imported_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS provider_directory (
+  id INTEGER PRIMARY KEY,
+  provider TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT '',
+  postal_address TEXT NOT NULL DEFAULT '',
+  cancel_email TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  source_url TEXT NOT NULL DEFAULT '',
+  checked_at TEXT,
+  UNIQUE(provider, category)
+);
+CREATE TABLE IF NOT EXISTS dispatches (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  contract_id INTEGER REFERENCES contracts(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'erstellt',
+  recipient_name TEXT NOT NULL,
+  recipient_address TEXT NOT NULL DEFAULT '',
+  recipient_email TEXT NOT NULL DEFAULT '',
+  with_post INTEGER NOT NULL DEFAULT 0,
+  pdf BLOB NOT NULL,
+  signed_pdf BLOB,
+  sign_provider TEXT NOT NULL,
+  sign_request_id TEXT,
+  signing_url TEXT,
+  email_sent_at TEXT,
+  post_provider TEXT,
+  post_letter_id TEXT,
+  post_status TEXT,
+  consent_at TEXT,
+  log TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS dispatches_user ON dispatches(user_id);
+CREATE TABLE IF NOT EXISTS outbox (
+  id INTEGER PRIMARY KEY,
+  to_addr TEXT NOT NULL,
+  cc_addr TEXT NOT NULL DEFAULT '',
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  attachments TEXT NOT NULL DEFAULT '',
+  transport TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS test_signatures (
+  id TEXT PRIMARY KEY,
+  pdf BLOB NOT NULL,
+  signed_pdf BLOB,
+  signer_email TEXT NOT NULL,
+  title TEXT NOT NULL,
+  return_url TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS test_letters (
+  id TEXT PRIMARY KEY,
+  registered INTEGER NOT NULL,
+  bytes INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sources (
   id INTEGER PRIMARY KEY,
   category TEXT NOT NULL,

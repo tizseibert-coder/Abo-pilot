@@ -17,7 +17,14 @@ export interface Letter {
  * Kündigungsschreiben als Vorlage. Abo-Pilot handelt als Botin, nicht als Stellvertreterin:
  * Unterschrift und Versand löst die Nutzerin oder der Nutzer aus (OR Art. 13 ff.).
  */
-export function buildCancellationLetter(user: User, contract: Contract, info: DeadlineInfo, todayISO: ISODate, insuredBirthYears: number[] = []): Letter {
+export function buildCancellationLetter(
+  user: User,
+  contract: Contract,
+  info: DeadlineInfo,
+  todayISO: ISODate,
+  insuredBirthYears: number[] = [],
+  recipientLines?: string[],
+): Letter {
   const ref = [contract.product, contract.customer_number && `Kunden-/Vertragsnummer ${contract.customer_number}`].filter(Boolean).join(', ');
   const zipCity = user.zip_city || '[PLZ Ort]';
   const paragraphs = [
@@ -38,7 +45,7 @@ export function buildCancellationLetter(user: User, contract: Contract, info: De
   );
   return {
     sender: [user.name || '[Vorname Name]', user.street || '[Strasse Nr.]', zipCity],
-    recipient: [contract.provider, 'Kundendienst / Kündigungen', '[Adresse gemäss Vertrag oder Rechnung]'],
+    recipient: recipientLines?.length ? recipientLines : [contract.provider, 'Kundendienst / Kündigungen', '[Adresse gemäss Vertrag oder Rechnung]'],
     place: `${user.zip_city.replace(/^\d{4}\s*/, '').trim() || '[Ort]'}, ${formatCH(todayISO)}`,
     subject: `Kündigung${ref ? ` – ${ref}` : ''}`,
     insuredLines:

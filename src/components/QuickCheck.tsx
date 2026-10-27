@@ -4,7 +4,10 @@ import { useActionState, useState } from 'react';
 import { quickAddContract, type FormState } from '@/app/actions';
 import { PROVIDER_SUGGESTIONS } from '@/data/providers';
 import { CATEGORIES, DEFAULT_TERMS, type Category } from '@/lib/categories';
+import { extractContract } from '@/lib/extract';
+import type { QrBill } from '@/lib/qrbill';
 import { Icon, type IconName } from './Icon';
+import { QrScan } from './QrScan';
 
 const QUICK: { key: Category; label: string; icon: IconName }[] = [
   { key: 'mobile', label: 'Handy', icon: 'sparkle' },
@@ -27,11 +30,52 @@ export function QuickCheckForm() {
   const [category, setCategory] = useState<Category>('mobile');
   const [provider, setProvider] = useState('');
   const [term, setTerm] = useState<number>(DEFAULT_TERMS.mobile.minTermMonths);
+  const [price, setPrice] = useState('');
+  const [bill, setBill] = useState<QrBill | null>(null);
+  const [period, setPeriod] = useState(1);
+
+  const applyBill = (b: QrBill) => {
+    setBill(b);
+    setPeriod(1);
+    const guess = extractContract(`${b.creditorName}\n${b.message}`);
+    if (guess.category) {
+      setCategory(guess.category);
+      setTerm(DEFAULT_TERMS[guess.category].minTermMonths);
+    }
+    setProvider(guess.provider ?? b.creditorName);
+    if (b.amount) setPrice(b.amount.toFixed(2));
+  };
+  const setBillPeriod = (months: number) => {
+    setPeriod(months);
+    if (bill?.amount) setPrice((Math.round((bill.amount / months) * 100) / 100).toFixed(2));
+  };
   const suggestions = PROVIDER_SUGGESTIONS[category];
   const showTerm = category !== 'krankenkasse_grund' && category !== 'streaming' && category !== 'bank';
 
   return (
     <form action={action} className="stack" style={{ gap: 22 }}>
+      <div className="scan-box">
+        <div>
+          <strong>Rechnung zur Hand?</strong>
+          <span className="hint"> QR-Code fotografieren – Anbieter und Betrag füllen sich selbst aus.</span>
+        </div>
+        <QrScan onBill={applyBill} />
+      </div>
+      {bill && (
+        <div className="notice info small" style={{ margin: 0 }}>
+          <strong>QR-Rechnung:</strong> {bill.creditorName}, {bill.currency} {bill.amount?.toFixed(2) ?? '–'}
+          {bill.message && ` · «${bill.message}»`}
+          <div className="chips" style={{ marginTop: 8 }}>
+            <span className="hint" style={{ alignSelf: 'center' }}>Der Betrag gilt für</span>
+            {[1, 3, 12].map((m) => (
+              <button key={m} type="button" className={`chip-btn ${period === m ? 'on' : ''}`} onClick={() => setBillPeriod(m)}>
+                {m === 1 ? '1 Monat' : m === 3 ? '3 Monate' : '1 Jahr'}
+              </button>
+            ))}
+          </div>
+          <input type="hidden" name="billing_address" value={[bill.creditorName, ...bill.creditorAddress].join('\n')} />
+        </div>
+      )}
       <div>
         <p className="label-title">1. Was für ein Vertrag?</p>
         <div className="chips">
@@ -74,7 +118,7 @@ export function QuickCheckForm() {
       <div className="row">
         <label>
           3. Was zahlen Sie pro Monat?
-          <input name="monthly_price" inputMode="decimal" placeholder="z. B. 49.90" required />
+          <input name="monthly_price" inputMode="decimal" placeholder="z. B. 49.90" value={price} onChange={(e) => setPrice(e.target.value)} required />
           <span className="hint">{category === 'krankenkasse_grund' ? 'Prämie pro Monat, für alle Personen zusammen' : 'Betrag in CHF, wie auf der Rechnung'}</span>
         </label>
         <label>

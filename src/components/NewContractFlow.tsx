@@ -23,15 +23,16 @@ export function NewContractFlow({ save }: { save: SaveAction }) {
   return (
     <div className="grid" style={{ gap: 24 }}>
       <section className="card">
-        <h2 style={{ marginTop: 0 }}>Rechnung einlesen (optional)</h2>
+        <h2 style={{ marginTop: 0 }}>Rechnung einlesen: Foto, PDF oder Text</h2>
         <form action={action} className="stack">
           <label>
             Rechnungstext oder E-Mail einfügen
             <textarea name="text" placeholder="z. B. Text aus der Rechnungs-E-Mail kopieren und hier einfügen" />
           </label>
           <label>
-            oder PDF-Rechnung <span className="hint">max. 5 MB, wird nicht gespeichert</span>
-            <input name="file" type="file" accept="application/pdf,.pdf" />
+            oder Foto bzw. PDF der Rechnung
+            <span className="hint">max. 5 MB, wird nicht gespeichert. Fotos werden zur Erkennung an unseren KI-Dienstleister (Anthropic, USA) übermittelt.</span>
+            <input name="file" type="file"accept="application/pdf,.pdf,image/jpeg,image/png,image/webp" />
           </label>
           {state.error && <p className="error">{state.error}</p>}
           <div className="actions">

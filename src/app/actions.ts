@@ -1,11 +1,13 @@
 'use server';
 
+import Anthropic from '@anthropic-ai/sdk';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { createSession, destroySession, hashPassword, requireUser, verifyPassword } from '@/lib/auth';
 import { bonusEligibility } from '@/lib/benefit';
 import { DEFAULT_TERMS, isCategory, type Category } from '@/lib/categories';
 import { isAdmin } from '@/lib/context';
+import { getDb } from '@/lib/db';
 import { addDays, isISODate, parseISO, toISO, today } from '@/lib/dates';
 import { extractContract, type ExtractedContract } from '@/lib/extract';
 import { offerVisibility } from '@/lib/offer-types';
@@ -17,6 +19,9 @@ import { parseBagPremiums, parseRegions, type KkModel, type Person } from '@/lib
 import { replacePremiums, replaceRegions, saveHealthSettings } from '@/lib/kk/repo';
 import * as repo from '@/lib/repo';
 import { suggestReview } from '@/lib/review';
+import { extractFromImage, IMAGE_TYPES, type ImageType } from '@/lib/vision';
+import { createDispatch, getDispatch, sendDispatch } from '@/lib/dispatch/flow';
+import { deleteDirectory, saveDirectory, stampTestSignature } from '@/lib/dispatch/directory';
 
 export interface FormState {
   error?: string;
@@ -156,9 +161,24 @@ export async function importInvoice(prev: ImportState, fd: FormData): Promise<Im
   await requireUser();
   let text = str(fd, 'text', 50_000);
   const file = fd.get('file');
+  if (file instanceof File && file.size > 0 && (IMAGE_TYPES as readonly string[]).includes(file.type)) {
+    if (file.size > MAX_PDF_BYTES) return { error: 'Foto ist grösser als 5 MB – bitte kleiner aufnehmen.' };
+    try {
+      const extracted = await extractFromImage(new Uint8Array(await file.arrayBuffer()), file.type as ImageType);
+      return { extracted, seq: (prev.seq ?? 0) + 1 };
+    } catch (e) {
+      const msg =
+        e instanceof Anthropic.AuthenticationError
+          ? 'Foto-Erkennung ist auf diesem Server noch nicht eingerichtet (ANTHROPIC_API_KEY). Bitte Text einfügen oder QR-Code scannen.'
+          : e instanceof Error
+            ? e.message
+            : String(e);
+      return { error: msg };
+    }
+  }
   if (file instanceof File && file.size > 0) {
     if (file.size > MAX_PDF_BYTES) return { error: 'PDF ist grösser als 5 MB.' };
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return { error: 'Bitte eine PDF-Datei hochladen.' };
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return { error: 'Bitte ein PDF oder ein Foto (JPG, PNG) hochladen.' };
     try {
       const { extractText } = await import('unpdf');
       const { text: pdfText } = await extractText(new Uint8Array(await file.arrayBuffer()), { mergePages: true });
@@ -470,7 +490,10 @@ export async function quickAddContract(_: FormState, fd: FormData): Promise<Form
     renewal_months: minTerm > 0 ? t.renewalMonths : 0,
     notice_months: t.noticeMonths,
     to_month_end: t.toMonthEnd ? 1 : 0,
-    notes: 'Schnell-Check: Kündigungsfrist ist ein üblicher Wert – bei Gelegenheit mit dem Vertrag abgleichen.',
+    notes: [
+      'Schnell-Check: Kündigungsfrist ist ein üblicher Wert – bei Gelegenheit mit dem Vertrag abgleichen.',
+      str(fd, 'billing_address', 400) && `Rechnungsadresse laut QR-Rechnung: ${str(fd, 'billing_address', 400).replace(/\n/g, ', ')}`,
+    ].filter(Boolean).join(' '),
   });
   scheduleReview(user.id, id);
   revalidatePath('/dashboard');
@@ -548,4 +571,87 @@ export async function startKkSwitch(_: FormState, fd: FormData): Promise<FormSta
   repo.setContractStatus(user.id, contract.id, 'gekündigt', deadline.endDate);
   revalidatePath('/dashboard');
   redirect(`/vertraege/${contract.id}/kuendigung?wechsel=kk&neu=${encodeURIComponent(insurerName)}&praemie=${newMonthly.toFixed(2)}`);
+}
+
+// ---------- Digital kündigen: signieren und senden ----------
+
+export async function startDispatch(contractId: number, _: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const contract = repo.getContract(user.id, contractId);
+  if (!contract) return { error: 'Vertrag nicht gefunden.' };
+  if (!user.name || !user.street || !/^\d{4}\s+\S/.test(user.zip_city)) {
+    return { error: 'Für eine gültige Kündigung brauchen wir Ihren Namen und Ihre Adresse (unter «Konto»).' };
+  }
+  const name = str(fd, 'recipient_name', 120);
+  const addressLines = str(fd, 'recipient_address', 400).split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 5);
+  const email = str(fd, 'recipient_email', 200);
+  const withPost = fd.get('with_post') === 'on';
+  if (!name) return { error: 'Empfänger fehlt.' };
+  if (!email && !withPost) return { error: 'Bitte eine Kündigungs-E-Mail des Anbieters angeben oder den Postversand wählen.' };
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'Die E-Mail-Adresse des Anbieters ist ungültig.' };
+  if (withPost && (addressLines.length < 2 || !/\b\d{4}\b/.test(addressLines.join(' ')))) {
+    return { error: 'Für den Postversand braucht es Strasse und PLZ/Ort des Anbieters.' };
+  }
+  if (fd.get('confirm') !== 'on') return { error: 'Bitte bestätigen Sie, dass wir die Kündigung in Ihrem Auftrag übermitteln.' };
+  let signingUrl: string;
+  try {
+    ({ signingUrl } = await createDispatch(user, contract, { name, addressLines, email }, withPost));
+  } catch (e) {
+    return { error: `Signatur konnte nicht gestartet werden: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  redirect(signingUrl);
+}
+
+export async function sendDispatchNow(dispatchId: number): Promise<void> {
+  const user = await requireUser();
+  const d = getDispatch(user.id, dispatchId);
+  const contract = d?.contract_id ? repo.getContract(user.id, d.contract_id) : undefined;
+  if (!d || !contract) redirect('/dashboard');
+  let ok = true;
+  try {
+    await sendDispatch(user, d, contract);
+    if (contract.status === 'aktiv') repo.setContractStatus(user.id, contract.id, 'gekündigt', viewContract(contract, [], today()).deadline.endDate);
+  } catch {
+    ok = false;
+  }
+  revalidatePath('/dashboard');
+  redirect(`/vertraege/${contract.id}/versand?d=${d.id}${ok ? '&gesendet=1' : '&fehler=1'}`);
+}
+
+export async function signTestDocument(id: string): Promise<void> {
+  const user = await requireUser();
+  const row = getDb().prepare('SELECT pdf, signer_email, return_url FROM test_signatures WHERE id = ?').get(id) as
+    | { pdf: Uint8Array; signer_email: string; return_url: string }
+    | undefined;
+  if (!row || row.signer_email !== user.email) redirect('/dashboard');
+  const signed = await stampTestSignature(new Uint8Array(row.pdf), user.name || user.email);
+  getDb().prepare('UPDATE test_signatures SET signed_pdf = ? WHERE id = ?').run(signed, id);
+  redirect(row.return_url);
+}
+
+export async function saveDirectoryAction(id: number | null, _: FormState, fd: FormData): Promise<FormState> {
+  await requireAdmin();
+  const provider = str(fd, 'provider', 120);
+  const email = str(fd, 'cancel_email', 200);
+  const source = str(fd, 'source_url', 500);
+  if (!provider) return { error: 'Anbieter fehlt.' };
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'E-Mail ungültig.' };
+  if (!/^https:\/\/\S+$/.test(source)) return { error: 'Bitte die Quelle (https-Link zur Anbieterseite oder AGB) angeben.' };
+  try {
+    saveDirectory(
+      { provider, category: str(fd, 'category', 40), postal_address: str(fd, 'postal_address', 400), cancel_email: email, notes: str(fd, 'notes', 500), source_url: source, checked_at: today() },
+      id ?? undefined,
+    );
+  } catch {
+    return { error: 'Für diesen Anbieter und diese Kategorie gibt es schon einen Eintrag.' };
+  }
+  revalidatePath('/admin/adressen');
+  redirect('/admin/adressen');
+}
+
+export async function removeDirectory(id: number): Promise<void> {
+  await requireAdmin();
+  deleteDirectory(id);
+  revalidatePath('/admin/adressen');
+  redirect('/admin/adressen');
 }

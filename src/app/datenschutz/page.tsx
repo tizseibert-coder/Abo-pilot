@@ -12,7 +12,14 @@ export default function Privacy() {
         <li><strong>Hochgeladene Rechnungen:</strong> werden nur im Arbeitsspeicher ausgelesen und nicht gespeichert. Gespeichert werden nur die Felder, die Sie bestätigen.</li>
       </ul>
       <h2>Wo die Daten liegen</h2>
-      <p>Auf Servern in der Schweiz. Keine Bekanntgabe ins Ausland, kein Verkauf und keine Vermietung von Daten.</p>
+      <p>Auf Servern in der Schweiz. Kein Verkauf und keine Vermietung von Daten.</p>
+      <h2>Dienstleister (Auftragsbearbeiter)</h2>
+      <ul>
+        <li><strong>Foto-Erkennung (optional):</strong> Wenn Sie ein Foto einer Rechnung hochladen, wird es zur Auswertung an Anthropic (USA) übermittelt und dort nicht für Training verwendet. Grundlage: Ihre Einwilligung durch den Upload sowie vertragliche Garantien (Art. 16 DSG). Alternative ohne Übermittlung: QR-Code scannen (Auswertung nur in Ihrem Browser) oder Text einfügen.</li>
+        <li><strong>Digitale Unterschrift:</strong> Skribble AG (Schweiz) für die qualifizierte elektronische Signatur.</li>
+        <li><strong>Briefversand:</strong> Pingen AG (Schweiz) für eingeschriebene Briefe, nur wenn Sie den Postversand wählen.</li>
+        <li><strong>E-Mail-Versand:</strong> Schweizer E-Mail-Anbieter für die Übermittlung Ihrer Kündigung an den Anbieter, mit Kopie an Sie.</li>
+      </ul>
       <h2>Weitergabe</h2>
       <p>Daten gehen an Anbieter nur, wenn Sie einen Wechsel selbst auslösen. An Krankenkassen geben wir keine Daten weiter.</p>
       <h2>Aufbewahrung und Löschung</h2>
