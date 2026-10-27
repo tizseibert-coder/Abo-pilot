@@ -32,7 +32,7 @@ export function OnboardingForm({ profile, hasContracts }: { profile: Profile; ha
   return (
     <form action={action} className="stack" style={{ gap: 24 }}>
       <section className="card stack">
-        <h2 style={{ margin: 0 }}>1. Ihr Haushalt</h2>
+        <h2 style={{ margin: 0 }}><span className="step">1</span>Ihr Haushalt</h2>
         <div className="row">
           <label>
             Personen im Haushalt
@@ -50,7 +50,7 @@ export function OnboardingForm({ profile, hasContracts }: { profile: Profile; ha
       </section>
 
       <section className="card stack">
-        <h2 style={{ margin: 0 }}>2. So nutzen Sie Handy und Internet</h2>
+        <h2 style={{ margin: 0 }}><span className="step">2</span>So nutzen Sie Handy und Internet</h2>
         <div>
           <p className="label-title">Handy-Daten</p>
           <Choice name="mobile_usage" options={MOBILE_USAGE} value={profile.mobileUsage} />
@@ -70,7 +70,7 @@ export function OnboardingForm({ profile, hasContracts }: { profile: Profile; ha
       </section>
 
       <section className="card stack">
-        <h2 style={{ margin: 0 }}>3. Was zahlen Sie heute?</h2>
+        <h2 style={{ margin: 0 }}><span className="step">3</span>Was zahlen Sie heute?</h2>
         <p className="muted small" style={{ margin: 0 }}>
           {hasContracts
             ? 'Für Kategorien, die Sie schon erfasst haben, legen wir nichts doppelt an.'
@@ -92,7 +92,7 @@ export function OnboardingForm({ profile, hasContracts }: { profile: Profile; ha
 
       {state.error && <p className="error">{state.error}</p>}
       <div className="actions">
-        <button type="submit" disabled={pending}>Fertig – meine Übersicht zeigen</button>
+        <button type="submit" className="lg" disabled={pending}>Fertig – meine Übersicht zeigen</button>
       </div>
     </form>
   );

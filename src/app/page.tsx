@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
-import { LoginForm, RegisterForm } from '@/components/AuthForms';
+import { AuthCard } from '@/components/AuthForms';
+import { Icon } from '@/components/Icon';
 import { currentUser } from '@/lib/auth';
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ geloescht?: string }> }) {
@@ -7,30 +8,44 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
   const { geloescht } = await searchParams;
   return (
     <>
-      {geloescht && <p className="notice">Ihr Konto und alle Daten wurden gelöscht.</p>}
-      <h1>Nie mehr eine Kündigungsfrist verpassen.</h1>
-      <p className="lead">
-        Abo-Pilot erfasst Ihre Verträge, rechnet jede Frist aus und zeigt neutral, welcher Wechsel sich über 24 Monate
-        wirklich lohnt. Sortiert nach Ihrem Nutzen, nicht nach unserer Provision.
-      </p>
-      <div className="grid cols-3" style={{ margin: '24px 0' }}>
-        <div className="card"><strong>1. Erfassen</strong><p className="muted small">Rechnung einfügen oder PDF hochladen. Anbieter, Preis und Nummer werden erkannt.</p></div>
-        <div className="card"><strong>2. Fristen sehen</strong><p className="muted small">Ampel und Kalender-Erinnerung 60, 30 und 7 Tage vor jeder Frist.</p></div>
-        <div className="card"><strong>3. Wechseln</strong><p className="muted small">Nettonutzen, Kündigungsbrief zum Unterschreiben, Prämien-Tracker.</p></div>
-      </div>
-      <div className="grid cols-2">
-        <section className="card">
-          <h2 style={{ marginTop: 0 }}>Konto erstellen</h2>
-          <RegisterForm />
-        </section>
-        <section className="card">
-          <h2 style={{ marginTop: 0 }}>Anmelden</h2>
-          <LoginForm />
-        </section>
-      </div>
-      <p className="muted small" style={{ marginTop: 24 }}>
-        Daten werden in der Schweiz gespeichert und nie verkauft. Abo-Pilot ist ein Informationsdienst und keine
-        Versicherungsvermittlerin.
+      {geloescht && <p className="notice good">Ihr Konto und alle Daten wurden gelöscht.</p>}
+      <section className="landing-hero">
+        <div>
+          <span className="eyebrow"><Icon name="shield" /> Neutral · Daten in der Schweiz</span>
+          <h1>Ihre Abos im Griff. Jede Frist im Blick.</h1>
+          <p className="lead">
+            Abo-Pilot sammelt Handy, Internet, Krankenkasse und Streaming an einem Ort, erinnert vor jeder
+            Kündigungsfrist und zeigt, welcher Wechsel sich über 24 Monate wirklich lohnt.
+          </p>
+          <ul className="trust-list">
+            <li><Icon name="check" /> Sortiert nach Ihrem Vorteil, nie nach unserer Provision</li>
+            <li><Icon name="check" /> Krankenkasse mit den offiziellen Prämien des Bundes</li>
+            <li><Icon name="check" /> Sie entscheiden – wir bereiten Kündigung und Wechsel vor</li>
+          </ul>
+        </div>
+        <AuthCard />
+      </section>
+
+      <section className="features">
+        <div className="card feature">
+          <div className="icon"><Icon name="sparkle" /></div>
+          <h3>In 2 Minuten erfasst</h3>
+          <p>Drei Fragen beantworten oder eine Rechnung einfügen. Anbieter, Preis und Frist erkennen wir selbst.</p>
+        </div>
+        <div className="card feature">
+          <div className="icon"><Icon name="clock" /></div>
+          <h3>Nie mehr zu spät</h3>
+          <p>Erinnerung 60, 30 und 7 Tage vor jeder Frist – auch direkt in Ihrem Kalender.</p>
+        </div>
+        <div className="card feature">
+          <div className="icon"><Icon name="scale" /></div>
+          <h3>Ehrlich verglichen</h3>
+          <p>Nettonutzen nach Aktionen, Prämien und Gebühren. Jede Provision legen wir offen.</p>
+        </div>
+      </section>
+
+      <p className="footer-note">
+        <Icon name="lock" /> Abo-Pilot ist ein Informationsdienst, keine Versicherungsvermittlerin. Ihre Daten werden nie verkauft.
       </p>
     </>
   );

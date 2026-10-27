@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { login, register, type FormState } from '@/app/actions';
 
 export function LoginForm() {
@@ -17,7 +17,7 @@ export function LoginForm() {
         <input name="password" type="password" autoComplete="current-password" required />
       </label>
       {state.error && <p className="error">{state.error}</p>}
-      <button type="submit" disabled={pending}>Anmelden</button>
+      <button type="submit" className="lg block" disabled={pending}>Anmelden</button>
     </form>
   );
 }
@@ -46,7 +46,20 @@ export function RegisterForm() {
         </span>
       </label>
       {state.error && <p className="error">{state.error}</p>}
-      <button type="submit" disabled={pending}>Kostenlos registrieren</button>
+      <button type="submit" className="lg block" disabled={pending}>Kostenlos starten</button>
     </form>
+  );
+}
+
+export function AuthCard() {
+  const [tab, setTab] = useState<'register' | 'login'>('register');
+  return (
+    <div className="card auth-card">
+      <div className="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === 'register'} onClick={() => setTab('register')}>Konto erstellen</button>
+        <button type="button" role="tab" aria-selected={tab === 'login'} onClick={() => setTab('login')}>Anmelden</button>
+      </div>
+      {tab === 'register' ? <RegisterForm /> : <LoginForm />}
+    </div>
   );
 }
