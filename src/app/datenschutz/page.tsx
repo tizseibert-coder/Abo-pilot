@@ -21,7 +21,7 @@ export default function Privacy() {
         <li><strong>E-Mail-Versand:</strong> Schweizer E-Mail-Anbieter für die Übermittlung Ihrer Kündigung an den Anbieter, mit Kopie an Sie.</li>
       </ul>
       <h2>Weitergabe</h2>
-      <p>Daten gehen an Anbieter nur, wenn Sie einen Wechsel selbst auslösen. An Krankenkassen geben wir keine Daten weiter.</p>
+      <p>Daten gehen an Anbieter nur, wenn Sie einen Wechsel oder eine Kündigung selbst auslösen – dann genau das Schreiben, das Sie unterschrieben haben. Krankenkassen erhalten von uns keine Kontakt- oder Profildaten für Werbung oder Offerten.</p>
       <h2>Aufbewahrung und Löschung</h2>
       <p>Bis Sie Ihr Konto löschen. Die Löschung unter «Konto» ist sofort und endgültig. Sitzungen laufen nach 30 Tagen ab.</p>
       <h2>Ihre Rechte</h2>
