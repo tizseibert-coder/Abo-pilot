@@ -21,7 +21,7 @@ export const viewport: Viewport = {
 
 const MAIN: NavItem[] = [
   { href: '/dashboard', label: 'Übersicht', icon: 'home' },
-  { href: '/vertraege/neu', label: 'Vertrag erfassen', short: 'Erfassen', icon: 'plus' },
+  { href: '/vertraege/neu', label: 'Vertrag prüfen', short: 'Prüfen', icon: 'plus' },
   { href: '/krankenkasse', label: 'Krankenkasse', short: 'Kasse', icon: 'heart' },
   { href: '/praemien', label: 'Prämien', icon: 'gift' },
 ];

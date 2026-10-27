@@ -15,7 +15,11 @@ Entwicklungsplan & Rechtsrahmen».
 | Krankenkassen-Vergleich für den ganzen Haushalt mit offiziellen BAG-Prämien | `/krankenkasse` |
 | Import BAG-Prämien und Prämienregionen (Upload oder URL, nur Team) | `/admin/daten` |
 | Angebots-Suchlauf über Tarifseiten der Anbieter (JSON-LD, sonst Claude), täglich per Cron | `/admin/quellen`, `/api/cron/angebote` |
-| Vertrag erfassen, auch aus eingefügtem Rechnungstext oder PDF (Anbieter, Preis, Nummer, Beginn) | `/vertraege/neu` |
+| Schnell-Check: Kategorie, Anbieter, Preis – sofort Frist und Sparpotenzial (2 Klicks) | `/vertraege/neu` |
+| Vertrag erfassen aus eingefügtem Rechnungstext oder PDF (Anbieter, Preis, Nummer, Beginn) | `/vertraege/neu` → «Rechnung / alle Details» |
+| Überprüfung mit Datum: Vorschlag (60 Tage vor Frist, KK 1. Oktober), «Alles gut – geprüft» mit einem Klick, im Kalender | Vertragsseite |
+| Wechsel-Assistent: Frist, Sperrfrist, Startdatum, Portierung geprüft; Sparpotenzial pro Monat / 1. Jahr / 24 Mt.; ein Klick startet Kündigung + Prämien-Tracking | `/vertraege/[id]/wechseln` |
+| Krankenkasse wechseln mit einem Klick aus dem Vergleich: Kündigungsbrief inkl. versicherter Personen + Checkliste | `/krankenkasse` |
 | Fristenrechner: Mindestlaufzeit, automatische Verlängerung, Monatsende, Krankenkasse (30.11.) | `src/lib/deadlines.ts` |
 | Ampel und Übersicht, Krankenkassen-Hinweis im Herbst mit Link auf priminfo.admin.ch | `/dashboard` |
 | Kalender-Export (.ics) mit Erinnerungen 60/30/7 Tage vorher | `/api/kalender` |

@@ -303,6 +303,43 @@ button.link { background: none; border: 0; color: var(--muted); padding: 0; text
 .stepper span { flex: 1; height: 4px; border-radius: 4px; background: var(--border); }
 .stepper span.on { background: var(--ink); }
 
+.review-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.review-row label { flex: 0 1 220px; }
+
+/* Chips (Schnell-Check) */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip, .chip-btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-weight: 500; font-size: 0.9rem;
+}
+.chip { position: relative; }
+.chip input { position: absolute; opacity: 0; pointer-events: none; }
+.chip:has(input:checked), .chip-btn.on { background: var(--ink); color: var(--ink-text); border-color: var(--ink); }
+.chip:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.chip-btn:hover { opacity: 1; background: var(--surface-2); }
+.chip-btn.on:hover { background: var(--ink); }
+
+/* Prüfliste (Wechsel-Assistent) */
+.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.checks li { display: flex; gap: 12px; align-items: flex-start; }
+.checks .mark { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+.checks .mark .svg-icon { width: 15px; height: 15px; }
+.checks .ok .mark { background: var(--good-bg); color: var(--good); }
+.checks .warn .mark { background: var(--warn-bg); color: var(--warn); }
+.checks .info .mark { background: var(--info-bg); color: var(--focus); }
+.checks strong { display: block; }
+.checks span.txt { color: var(--muted); font-size: 0.875rem; }
+.compare { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; }
+.compare .arrow { color: var(--faint); }
+@media (max-width: 600px) { .compare { grid-template-columns: 1fr; } .compare .arrow { transform: rotate(90deg); justify-self: center; } }
+.savings { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.savings > div { background: var(--good-bg); border-radius: 12px; padding: 14px; }
+.savings .v { font-size: 1.3rem; font-weight: 700; color: var(--good); font-variant-numeric: tabular-nums; }
+.savings .l { font-size: 0.8rem; color: var(--good); }
+@media (max-width: 600px) { .savings { grid-template-columns: 1fr; } }
+.free-note { display: flex; gap: 10px; align-items: flex-start; font-size: 0.85rem; color: var(--muted); background: var(--surface-2); border-radius: 12px; padding: 12px 14px; }
+.free-note .svg-icon { color: var(--good); margin-top: 2px; }
+
 /* Landing */
 .landing-hero { display: grid; grid-template-columns: 1.15fr 1fr; gap: 48px; align-items: center; padding: 24px 0 40px; }
 @media (max-width: 860px) { .landing-hero { grid-template-columns: 1fr; gap: 28px; padding-top: 4px; } }

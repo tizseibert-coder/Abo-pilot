@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { Avatar, Icon, type IconName } from '@/components/Icon';
 import { requireUser } from '@/lib/auth';
-import { formatChf } from '@/lib/benefit';
+import { formatChf, savingsWindow } from '@/lib/benefit';
+import { reviewDue } from '@/lib/review';
 import { categoryLabel } from '@/lib/categories';
 import { offerContext } from '@/lib/context';
-import { diffDays, formatCH, parseISO, today } from '@/lib/dates';
+import { addDays, diffDays, formatCH, parseISO, toISO, today } from '@/lib/dates';
 import { URGENCY_LABEL } from '@/lib/deadlines';
 import { buildOverview, type ContractView } from '@/lib/overview';
 import { getProfile, listContracts, listSwitches } from '@/lib/repo';
@@ -46,8 +47,20 @@ function buildTasks(views: ContractView[], hasProfile: boolean, todayISO: string
     tasks.push({ key: 'profil', tone: 'info', icon: 'sliders', title: 'Profil ergänzen', text: 'Damit wir nur Angebote zeigen, die zu Ihrer Nutzung passen.', href: '/start', cta: 'Profil ausfüllen' });
   }
   for (const v of views) {
-    if (v.contract.category === 'krankenkasse_grund') continue;
     const id = v.contract.id;
+    if (reviewDue(v.contract.review_on, todayISO) && v.urgency !== 'rot') {
+      tasks.push({
+        key: `review-${id}`,
+        tone: v.best ? 'good' : 'info',
+        icon: 'calendar',
+        title: `${v.contract.provider}: Überprüfung fällig`,
+        text: v.best ? `Ein Wechsel spart ${formatChf(v.best.netBenefit)} in 24 Monaten.` : 'Preis und Bedingungen kurz bestätigen – ein Klick.',
+        href: `/vertraege/${id}`,
+        cta: 'Jetzt prüfen',
+      });
+      continue;
+    }
+    if (v.contract.category === 'krankenkasse_grund') continue;
     if (v.urgency === 'rot' || v.urgency === 'orange' || v.urgency === 'gelb') {
       tasks.push({
         key: `frist-${id}`,
@@ -65,8 +78,8 @@ function buildTasks(views: ContractView[], hasProfile: boolean, todayISO: string
         icon: 'tag',
         title: `${v.contract.provider}: ${formatChf(v.best.netBenefit)} sparen`,
         text: `${v.best.offer.provider} ${v.best.offer.name} passt zu Ihrem Profil. Wechsel ${v.deadline.kind === 'unbefristet' ? 'jederzeit' : `per ${formatCH(v.deadline.endDate)}`} möglich.`,
-        href: `/vertraege/${id}`,
-        cta: 'Angebot ansehen',
+        href: `/vertraege/${id}/wechseln?angebot=${encodeURIComponent(v.best.offer.id)}`,
+        cta: 'Wechsel prüfen',
       });
     }
   }
@@ -82,6 +95,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const { views, monthlyTotal, potential, inactive } = buildOverview(listContracts(user.id), listSwitches(user.id), todayISO, offerContext(user.id));
   const tasks = buildTasks(views, hasProfile, todayISO);
   const next = views.filter((v) => v.deadline.kind !== 'unbefristet').sort((a, b) => a.deadline.daysLeft - b.deadline.daysLeft)[0];
+  const firstYear = views.reduce(
+    (sum, v) => sum + (v.best ? savingsWindow(v.contract.monthly_price, v.best, toISO(addDays(parseISO(v.deadline.endDate), 1))).firstYear : 0),
+    0,
+  );
   const assumed = views.filter((v) => v.contract.notes.includes('Profil-Assistenten') || v.deadline.note.includes('fehlt')).length;
 
   return (
@@ -107,7 +124,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <div className="card kpi hero">
           <span className="label"><Icon name="tag" /> Sparpotenzial</span>
           <span className="value">{formatChf(potential)}</span>
-          <span className="sub">über 24 Monate, nur passende und geprüfte Angebote</span>
+          <span className="sub">über 24 Monate · davon {formatChf(firstYear)} im ersten Jahr nach dem Wechsel</span>
         </div>
         <div className="card kpi">
           <span className="label"><Icon name="calendar" /> Fixkosten</span>
@@ -129,6 +146,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           )}
         </div>
       </section>
+
+      <p className="free-note" style={{ marginTop: -12, marginBottom: 24 }}>
+        <Icon name="check" />
+        <span>
+          Für Sie kostenlos: Nehmen Sie ein Angebot an, zahlt der Anbieter uns eine offen ausgewiesene Provision. Ihr Preis bleibt
+          gleich, und bei der Krankenkasse verdienen wir gar nichts.
+        </span>
+      </p>
 
       {tasks.length > 0 && (
         <>

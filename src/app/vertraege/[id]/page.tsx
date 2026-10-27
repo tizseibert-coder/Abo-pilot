@@ -3,20 +3,22 @@ import { notFound } from 'next/navigation';
 import { ConfirmSubmit } from '@/components/ConfirmSubmit';
 import { Avatar, Icon } from '@/components/Icon';
 import { requireUser } from '@/lib/auth';
-import { formatChf, HORIZON_MONTHS } from '@/lib/benefit';
+import { formatChf, HORIZON_MONTHS, savingsWindow } from '@/lib/benefit';
 import { CATEGORIES, categoryLabel, isCategory } from '@/lib/categories';
-import { formatCH, today } from '@/lib/dates';
+import { addDays, formatCH, parseISO, toISO, today } from '@/lib/dates';
+import { reviewDue } from '@/lib/review';
 import { URGENCY_LABEL } from '@/lib/deadlines';
 import { offerContext } from '@/lib/context';
 import { historyOf, viewContract } from '@/lib/overview';
 import { getContract, listContracts, listSwitches } from '@/lib/repo';
-import { markCancelled, reactivate, recordSwitch, removeContract } from '../../actions';
+import { markCancelled, markReviewed, reactivate, removeContract, setReviewDate } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ContractPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ContractPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ neu?: string; geprueft?: string }> }) {
   const user = await requireUser();
   const id = Number((await params).id);
+  const flags = await searchParams;
   const contract = Number.isInteger(id) ? getContract(user.id, id) : undefined;
   if (!contract) notFound();
 
@@ -27,6 +29,9 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const active = contract.status === 'aktiv';
 
   const best = view.best;
+  const switchFrom = toISO(addDays(parseISO(view.deadline.endDate), 1));
+  const win = best ? savingsWindow(contract.monthly_price, best, switchFrom) : null;
+  const due = active && reviewDue(contract.review_on, todayISO);
   const offerLine = (r: (typeof view.offers)[number]) =>
     `${r.offer.name} · ${formatChf(r.offer.monthlyPrice)}/Mt.` +
     (r.offer.promoPrice !== null && r.offer.promoMonths > 0
@@ -52,6 +57,28 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           {active && <Link className="button" href={`/vertraege/${contract.id}/kuendigung`}><Icon name="mail" /> Kündigungsbrief</Link>}
         </div>
       </div>
+
+      {flags.neu && active && (
+        <p className="notice good" style={{ marginBottom: 16 }}>
+          <strong>Gespeichert.</strong>{' '}
+          {best && win
+            ? `Ein Wechsel ab ${formatCH(switchFrom)} spart Ihnen ${formatChf(win.firstYear)} im ersten Jahr.`
+            : `Wir überwachen die Frist und erinnern Sie am ${formatCH(contract.review_on)}.`}
+        </p>
+      )}
+      {flags.geprueft && <p className="notice good" style={{ marginBottom: 16 }}>Geprüft. Nächste Erinnerung am {formatCH(contract.review_on)}.</p>}
+      {due && (
+        <div className="task warn" style={{ marginBottom: 16 }}>
+          <span className="dot"><Icon name="clock" /></span>
+          <div className="body">
+            <strong>Prüfung fällig</strong>
+            <span>Stimmt der Preis noch? {best ? `Ein Wechsel spart ${formatChf(best.netBenefit)}.` : 'Kein besseres Angebot gefunden.'}</span>
+          </div>
+          <form action={markReviewed.bind(null, contract.id)} className="inline-form">
+            <button type="submit" className="secondary">Alles gut – geprüft</button>
+          </form>
+        </div>
+      )}
 
       <div className="grid cols-2">
         <section className="card">
@@ -87,6 +114,16 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             )}
           </dl>
           {contract.notes && <p className="small muted">{contract.notes}</p>}
+          {active && (
+            <form action={setReviewDate.bind(null, contract.id)} className="review-row">
+              <label>
+                Nächste Überprüfung
+                <input type="date" name="review_on" defaultValue={contract.review_on ?? ''} min={todayISO} />
+              </label>
+              <button type="submit" className="secondary">Speichern</button>
+              {contract.last_reviewed_at && <span className="hint">zuletzt geprüft {formatCH(contract.last_reviewed_at)}</span>}
+            </form>
+          )}
           <div className="actions" style={{ marginTop: 16 }}>
             {active ? (
               <form action={markCancelled.bind(null, contract.id)} className="inline-form">
@@ -125,10 +162,15 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               <span className="sub">
                 in 24 Monaten mit <strong>{best.offer.provider} {best.offer.name}</strong>
               </span>
+              {win && (
+                <span className="sub">
+                  ab {formatCH(switchFrom)} · Ø {formatChf(win.perMonth)} pro Monat · {formatChf(win.firstYear)} im ersten Jahr
+                </span>
+              )}
               <div className="actions" style={{ marginTop: 12 }}>
-                <form action={recordSwitch.bind(null, contract.id, best.offer.id)} className="inline-form">
-                  <button type="submit" className="good">Wechsel vormerken</button>
-                </form>
+                <Link className="button good" href={`/vertraege/${contract.id}/wechseln?angebot=${encodeURIComponent(best.offer.id)}`}>
+                  Jetzt wechseln <Icon name="arrowRight" />
+                </Link>
                 <a className="button secondary" href={best.offer.sourceUrl} target="_blank" rel="noreferrer">Zum Angebot</a>
               </div>
             </>
@@ -190,9 +232,9 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                     <span className={`gain ${r.netBenefit > 0 ? 'pos' : 'neg'}`}>{r.netBenefit > 0 ? '+' : ''}{formatChf(r.netBenefit)}</span>
                     <span className="gain-label">Vorteil in {HORIZON_MONTHS} Mt.</span>
                     {active && r.netBenefit > 0 && r.gaps.length === 0 && (
-                      <form action={recordSwitch.bind(null, contract.id, r.offer.id)} className="inline-form">
-                        <button type="submit" className={isBest ? 'good' : 'secondary'}>Vormerken</button>
-                      </form>
+                      <Link className={`button ${isBest ? 'good' : 'secondary'}`} href={`/vertraege/${contract.id}/wechseln?angebot=${encodeURIComponent(r.offer.id)}`}>
+                        Wechseln
+                      </Link>
                     )}
                   </div>
                 </article>
@@ -201,6 +243,13 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           </div>
           <p className="muted small" style={{ marginTop: 12 }}>
             Vorteil = heutige Kosten − neue Kosten + Prämie − Einmalkosten, über {HORIZON_MONTHS} Monate. Sortiert nur nach Ihrem Nutzen.
+          </p>
+          <p className="free-note">
+            <Icon name="check" />
+            <span>
+              Abo-Pilot ist für Sie kostenlos: Wenn Sie ein Angebot annehmen, zahlt der Anbieter uns die ausgewiesene Provision.
+              Ihr Preis bleibt gleich, die Reihenfolge hängt nie davon ab.
+            </span>
           </p>
         </>
       )}

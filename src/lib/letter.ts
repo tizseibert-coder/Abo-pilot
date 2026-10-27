@@ -7,6 +7,8 @@ export interface Letter {
   recipient: string[];
   place: string;
   subject: string;
+  /** Krankenkasse: eine Zeile pro versicherte Person zum Ausfüllen */
+  insuredLines: string[];
   paragraphs: string[];
   signatureName: string;
 }
@@ -15,7 +17,7 @@ export interface Letter {
  * Kündigungsschreiben als Vorlage. Abo-Pilot handelt als Botin, nicht als Stellvertreterin:
  * Unterschrift und Versand löst die Nutzerin oder der Nutzer aus (OR Art. 13 ff.).
  */
-export function buildCancellationLetter(user: User, contract: Contract, info: DeadlineInfo, todayISO: ISODate): Letter {
+export function buildCancellationLetter(user: User, contract: Contract, info: DeadlineInfo, todayISO: ISODate, insuredBirthYears: number[] = []): Letter {
   const ref = [contract.product, contract.customer_number && `Kunden-/Vertragsnummer ${contract.customer_number}`].filter(Boolean).join(', ');
   const zipCity = user.zip_city || '[PLZ Ort]';
   const paragraphs = [
@@ -37,8 +39,12 @@ export function buildCancellationLetter(user: User, contract: Contract, info: De
   return {
     sender: [user.name || '[Vorname Name]', user.street || '[Strasse Nr.]', zipCity],
     recipient: [contract.provider, 'Kundendienst / Kündigungen', '[Adresse gemäss Vertrag oder Rechnung]'],
-    place: `${zipCity.replace(/^\d{4}\s*/, '') || '[Ort]'}, ${formatCH(todayISO)}`,
+    place: `${user.zip_city.replace(/^\d{4}\s*/, '').trim() || '[Ort]'}, ${formatCH(todayISO)}`,
     subject: `Kündigung${ref ? ` – ${ref}` : ''}`,
+    insuredLines:
+      info.kind === 'krankenkasse'
+        ? (insuredBirthYears.length ? insuredBirthYears : [0]).map((y) => `Name, Vorname: ____________________  Geb.: ${y ? `__.__.${y}` : '__.__.____'}  Versichertennr.: ______________`)
+        : [],
     paragraphs,
     signatureName: user.name || '[Vorname Name]',
   };

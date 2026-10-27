@@ -82,6 +82,23 @@ export function rankOffers(
     );
 }
 
+export interface SavingsWindow {
+  /** ab wann der neue Vertrag läuft (Tag nach dem Ende des alten) */
+  from: ISODate;
+  perMonth: number;
+  firstYear: number;
+  horizon: number;
+}
+
+/**
+ * Ersparnis über verschiedene Zeiträume. Erstes Jahr: 12 Monate neuer Vertrag inkl. Aktion,
+ * Prämie und Einmalkosten gegenüber 12 Monaten des heutigen Preises.
+ */
+export function savingsWindow(currentMonthly: number, r: BenefitResult, from: ISODate): SavingsWindow {
+  const firstYear = round2(currentMonthly * 12 - offerCost(r.offer, 12) + r.bonus - r.oneTimeFee);
+  return { from, perMonth: round2(r.netBenefit / HORIZON_MONTHS), firstYear, horizon: r.netBenefit };
+}
+
 export function formatChf(n: number): string {
   const sign = n < 0 ? '−' : '';
   const [int, dec] = Math.abs(n).toFixed(2).split('.');

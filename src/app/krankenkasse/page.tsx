@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { KkSwitchForm } from '@/components/KkSwitchForm';
 import { requireUser } from '@/lib/auth';
 import { formatChf } from '@/lib/benefit';
 import { today } from '@/lib/dates';
@@ -133,6 +134,7 @@ export default async function HealthInsurance({ searchParams }: { searchParams: 
               {' '}Kündigung bis 30. November (Eingang beim Versicherer).
             </p>
           )}
+          <KkSwitchForm needsCurrent={current.length === 0}>
           <div className="table-wrap">
             <table>
               <thead>
@@ -143,6 +145,7 @@ export default async function HealthInsurance({ searchParams }: { searchParams: 
                   <th className="num">CHF / Monat</th>
                   <th className="num">CHF / Jahr</th>
                   {currentMonthly > 0 && <th className="num">Ersparnis / Jahr</th>}
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -164,12 +167,19 @@ export default async function HealthInsurance({ searchParams }: { searchParams: 
                         <span className={currentMonthly > q.monthlyTotal ? 'pos' : 'neg'}>{formatChf((currentMonthly - q.monthlyTotal) * 12)}</span>
                       </td>
                     )}
+                    <td>
+                      <button type="submit" name="pick" value={`${q.insurerId}|${q.insurerName}|${q.monthlyTotal}`} className={i === 0 ? 'good' : 'secondary'}>
+                        Wechseln
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          </KkSwitchForm>
           <p className="muted small">
+            Ein Klick auf «Wechseln» erstellt den Kündigungsbrief an Ihre heutige Kasse und eine Checkliste für die neue.
             Quelle: offizielle Prämien {year} des BAG. Franchisen werden an die Altersklasse angepasst
             {settings.persons.some((p) => normalizeFranchise(ageClass(p.birthYear, year), p.franchise) !== p.franchise) && ' (bei mindestens einer Person geändert)'}.
             Prüfen Sie das Resultat vor dem Wechsel auf <a href="https://www.priminfo.admin.ch" target="_blank" rel="noreferrer">priminfo.admin.ch</a>.

@@ -16,6 +16,7 @@ import { deleteSource, getSource, runAllSources, runSource, saveSource } from '@
 import { parseBagPremiums, parseRegions, type KkModel, type Person } from '@/lib/kk/premiums';
 import { replacePremiums, replaceRegions, saveHealthSettings } from '@/lib/kk/repo';
 import * as repo from '@/lib/repo';
+import { suggestReview } from '@/lib/review';
 
 export interface FormState {
   error?: string;
@@ -109,6 +110,7 @@ export async function saveContract(id: number | null, _: FormState, fd: FormData
   let target = id;
   if (id === null) {
     target = repo.createContract(user.id, input);
+    scheduleReview(user.id, target);
   } else {
     if (!repo.getContract(user.id, id)) return { error: 'Vertrag nicht gefunden.' };
     repo.updateContract(user.id, id, input);
@@ -260,7 +262,7 @@ export async function saveOnboarding(_: FormState, fd: FormData): Promise<FormSt
     });
   }
   repo.saveProfile(user.id, profile);
-  for (const c of toCreate) repo.createContract(user.id, c);
+  for (const c of toCreate) scheduleReview(user.id, repo.createContract(user.id, c));
   revalidatePath('/dashboard');
   redirect('/dashboard?willkommen=1');
 }
@@ -432,4 +434,118 @@ export async function runAllSourcesNow(): Promise<void> {
   await runAllSources(true);
   revalidatePath('/admin/quellen');
   redirect('/admin/quellen');
+}
+
+// ---------- Schnell-Check, Überprüfung, Wechsel in wenigen Klicks ----------
+
+/** Nächste Prüfung vorschlagen, sobald ein Vertrag neu ist (oder nach einer Prüfung). */
+function scheduleReview(userId: number, id: number, reviewedAt?: string): void {
+  const c = repo.getContract(userId, id);
+  if (!c) return;
+  const todayISO = today();
+  repo.setReview(userId, id, suggestReview(viewContract(c, [], todayISO).deadline, todayISO), reviewedAt);
+}
+
+export async function quickAddContract(_: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const category = str(fd, 'category');
+  const provider = str(fd, 'provider', 120);
+  const price = Number(str(fd, 'monthly_price').replace(/['’\s]/g, '').replace(',', '.'));
+  const since = str(fd, 'since', 7);
+  const term = int(fd, 'min_term_months', 0, 60);
+  if (!isCategory(category)) return { error: 'Bitte wählen Sie, was für ein Vertrag es ist.' };
+  if (!provider) return { error: 'Bei wem haben Sie den Vertrag?' };
+  if (!Number.isFinite(price) || price <= 0 || price > 10_000) return { error: 'Was zahlen Sie pro Monat? (z. B. 49.90)' };
+  if (since && !/^\d{4}-\d{2}$/.test(since)) return { error: '«Seit wann» bitte als Monat und Jahr.' };
+  const t = DEFAULT_TERMS[category];
+  const minTerm = term ?? t.minTermMonths;
+  const id = repo.createContract(user.id, {
+    category,
+    provider,
+    product: '',
+    customer_number: '',
+    monthly_price: Math.round(price * 100) / 100,
+    start_date: since ? `${since}-01` : null,
+    min_term_months: minTerm,
+    renewal_months: minTerm > 0 ? t.renewalMonths : 0,
+    notice_months: t.noticeMonths,
+    to_month_end: t.toMonthEnd ? 1 : 0,
+    notes: 'Schnell-Check: Kündigungsfrist ist ein üblicher Wert – bei Gelegenheit mit dem Vertrag abgleichen.',
+  });
+  scheduleReview(user.id, id);
+  revalidatePath('/dashboard');
+  redirect(`/vertraege/${id}?neu=1`);
+}
+
+export async function setReviewDate(id: number, fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const date = str(fd, 'review_on', 10);
+  if (isISODate(date)) repo.setReview(user.id, id, date);
+  revalidatePath('/dashboard');
+  redirect(`/vertraege/${id}`);
+}
+
+export async function markReviewed(id: number): Promise<void> {
+  const user = await requireUser();
+  scheduleReview(user.id, id, today());
+  revalidatePath('/dashboard');
+  redirect(`/vertraege/${id}?geprueft=1`);
+}
+
+/** Ein Klick: Wechsel vormerken, alten Vertrag als gekündigt führen, Kündigungsbrief öffnen. */
+export async function startSwitch(contractId: number, offerId: string): Promise<void> {
+  const user = await requireUser();
+  const contract = repo.getContract(user.id, contractId);
+  const offer = getOffer(offerId);
+  const todayISO = today();
+  if (!contract || contract.status !== 'aktiv' || !offer || offer.category !== contract.category || offerVisibility(offer, todayISO) !== 'sichtbar') {
+    redirect(`/vertraege/${contractId}`);
+  }
+  const eligible = bonusEligibility(offer, historyOf(repo.listContracts(user.id), repo.listSwitches(user.id)), todayISO) === null;
+  const { deadline } = viewContract(contract, [], todayISO);
+  repo.createSwitch(user.id, {
+    contract_id: contract.id,
+    offer_id: offer.id,
+    new_provider: offer.provider,
+    expected_bonus: eligible ? offer.bonusChf : 0,
+    expected_by: toISO(addDays(parseISO(deadline.endDate), 90)),
+  });
+  repo.setContractStatus(user.id, contract.id, 'gekündigt', deadline.endDate);
+  revalidatePath('/dashboard');
+  redirect(`/vertraege/${contract.id}/kuendigung?wechsel=${encodeURIComponent(offer.id)}`);
+}
+
+export async function startKkSwitch(_: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireUser();
+  // Jede Zeile im Vergleich ist ein eigener Absende-Knopf: name="pick" value="id|Name|Monatsprämie"
+  const [insurerId = '', insurerName = '', monthlyRaw = ''] = str(fd, 'pick', 200).split('|');
+  const newMonthly = Number(monthlyRaw);
+  if (!insurerId || !insurerName || !Number.isFinite(newMonthly)) return { error: 'Angebot unvollständig – bitte neu vergleichen.' };
+  const todayISO = today();
+  let contract = repo.listContracts(user.id).find((c) => c.status === 'aktiv' && c.category === 'krankenkasse_grund');
+  if (!contract) {
+    const provider = str(fd, 'current_provider', 120);
+    const price = Number(str(fd, 'current_price').replace(',', '.'));
+    if (!provider) return { error: 'Bei welcher Kasse sind Sie heute?' };
+    const id = repo.createContract(user.id, {
+      category: 'krankenkasse_grund', provider, product: 'Grundversicherung', customer_number: '',
+      monthly_price: Number.isFinite(price) && price > 0 ? Math.round(price * 100) / 100 : 0, start_date: null,
+      min_term_months: 0, renewal_months: 0, notice_months: 1, to_month_end: 1, notes: '',
+    });
+    contract = repo.getContract(user.id, id)!;
+  }
+  if (contract.provider.trim().toLowerCase() === insurerName.trim().toLowerCase()) {
+    return { error: `Sie sind bereits bei ${insurerName}. Ein Modell- oder Franchisewechsel innerhalb der Kasse geht direkt bei ihr.` };
+  }
+  const { deadline } = viewContract(contract, [], todayISO);
+  repo.createSwitch(user.id, {
+    contract_id: contract.id,
+    offer_id: `kk-${insurerId}`,
+    new_provider: insurerName,
+    expected_bonus: 0,
+    expected_by: null,
+  });
+  repo.setContractStatus(user.id, contract.id, 'gekündigt', deadline.endDate);
+  revalidatePath('/dashboard');
+  redirect(`/vertraege/${contract.id}/kuendigung?wechsel=kk&neu=${encodeURIComponent(insurerName)}&praemie=${newMonthly.toFixed(2)}`);
 }

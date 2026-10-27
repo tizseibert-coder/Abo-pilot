@@ -29,6 +29,9 @@ export interface Contract {
   ended_on: ISODate | null;
   notes: string;
   created_at: string;
+  /** nächste geplante Überprüfung durch die Nutzerin oder den Nutzer */
+  review_on: ISODate | null;
+  last_reviewed_at: ISODate | null;
 }
 
 export interface Switch {
@@ -43,7 +46,7 @@ export interface Switch {
   created_at: string;
 }
 
-export type ContractInput = Omit<Contract, 'id' | 'user_id' | 'created_at' | 'status' | 'ended_on'>;
+export type ContractInput = Omit<Contract, 'id' | 'user_id' | 'created_at' | 'status' | 'ended_on' | 'review_on' | 'last_reviewed_at'>;
 
 const USER_COLS = 'id, email, name, street, zip_city, consent_at, created_at';
 
@@ -157,4 +160,12 @@ export function saveProfile(userId: number, p: Profile): void {
         internet_need = excluded.internet_need, wants_tv = excluded.wants_tv, updated_at = excluded.updated_at`,
     )
     .run(userId, p.householdSize, p.plz, p.mobileLines, p.mobileUsage, p.roaming, p.internetNeed, p.wantsTv ? 1 : 0, nowISO());
+}
+
+export function setReview(userId: number, id: number, reviewOn: ISODate | null, reviewedAt?: ISODate): void {
+  if (reviewedAt) {
+    getDb().prepare('UPDATE contracts SET review_on = ?, last_reviewed_at = ? WHERE user_id = ? AND id = ?').run(reviewOn, reviewedAt, userId, id);
+  } else {
+    getDb().prepare('UPDATE contracts SET review_on = ? WHERE user_id = ? AND id = ?').run(reviewOn, userId, id);
+  }
 }

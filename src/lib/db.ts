@@ -136,6 +136,8 @@ CREATE TABLE IF NOT EXISTS sources (
 const ADDED_COLUMNS: [table: string, column: string, ddl: string][] = [
   ['profiles', 'persons', "persons TEXT NOT NULL DEFAULT '[]'"],
   ['profiles', 'kk_models', "kk_models TEXT NOT NULL DEFAULT 'alle'"],
+  ['contracts', 'review_on', 'review_on TEXT'],
+  ['contracts', 'last_reviewed_at', 'last_reviewed_at TEXT'],
 ];
 
 function migrate(d: DatabaseSync): void {
